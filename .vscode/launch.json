@@ -1,0 +1,16 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "name": "Install + Start App",
+            "type": "node-terminal",
+            "request": "launch",
+            "cwd": "${workspaceFolder}",
+            "command": "pnpm install && pnpm dev",
+            "env": {
+                "SHELL": "/bin/zsh",
+                "PORT": "3000"
+            }
+        }
+    ]
+}
