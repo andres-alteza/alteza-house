@@ -9,6 +9,11 @@ const openSans = Open_Sans({ subsets: ["latin"], variable: "--font-open-sans" })
 export const metadata: Metadata = {
   title: "Alteza House - Sistema de Gestion de Pagos",
   description: "Sistema de gestion de pagos de alquiler de habitaciones",
+  icons: {
+    icon: "/favicon.svg",
+    shortcut: "/favicon.svg",
+    apple: "/favicon.svg",
+  },
 }
 
 export const viewport: Viewport = {

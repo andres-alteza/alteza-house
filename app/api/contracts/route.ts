@@ -34,7 +34,7 @@ export const POST = withAuth(
   const col = await getCollection("contracts")
   const overlappingContract = await col.findOne({
     tenantId,
-    status: { $in: ["ready_to_sign", "signed", "approved", "finished"] },
+    status: { $in: ["ready_to_sign", "signed", "approved"] },
     startDate: { $lte: endDate },
     endDate: { $gte: startDate },
   })

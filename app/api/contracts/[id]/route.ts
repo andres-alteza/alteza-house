@@ -31,7 +31,7 @@ export const PUT = withAuth(
   const overlappingContract = await col.findOne({
     tenantId,
     _id: { $ne: idParsed.value },
-    status: { $in: ["ready_to_sign", "signed", "approved", "finished"] },
+    status: { $in: ["ready_to_sign", "signed", "approved"] },
     startDate: { $lte: endDate },
     endDate: { $gte: startDate },
   })
