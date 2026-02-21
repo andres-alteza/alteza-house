@@ -4,12 +4,16 @@ import { getAuth } from "firebase-admin/auth"
 let ready = false
 
 function parseServiceAccountEnv(raw: string) {
-  // Supports either:
-  // - raw JSON string: {"project_id":"...","client_email":"...","private_key":"..."}
-  // - base64-encoded JSON (common for CI providers / secret stores)
-  let json = raw.trim()
-  if (!json.startsWith("{")) {
-    json = Buffer.from(json, "base64").toString("utf-8").trim()
+  // FIREBASE_ADMIN_SERVICE_ACCOUNT must be base64-encoded service account JSON.
+  // This avoids multiline/quoting issues in hosted env providers.
+  const encoded = raw.trim()
+  let json: string
+  try {
+    json = Buffer.from(encoded, "base64").toString("utf-8").trim()
+  } catch {
+    throw new Error(
+      "FIREBASE_ADMIN_SERVICE_ACCOUNT must be a valid base64-encoded JSON string.",
+    )
   }
 
   let sa: Record<string, unknown>
@@ -17,7 +21,10 @@ function parseServiceAccountEnv(raw: string) {
     sa = JSON.parse(json)
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "unknown"
-    throw new Error("Firebase SA JSON parse error: " + msg)
+    throw new Error(
+      "FIREBASE_ADMIN_SERVICE_ACCOUNT decode/parse error. Ensure it is base64(JSON). Details: " +
+        msg,
+    )
   }
 
   const projectId = typeof sa.project_id === "string" ? sa.project_id : undefined
@@ -49,7 +56,7 @@ function init() {
   const saEnv = process.env.FIREBASE_ADMIN_SERVICE_ACCOUNT
   if (!saEnv) {
     throw new Error(
-      "Missing Firebase Admin credentials. Set FIREBASE_ADMIN_SERVICE_ACCOUNT to a service account JSON string or base64-encoded JSON.",
+      "Missing Firebase Admin credentials. Set FIREBASE_ADMIN_SERVICE_ACCOUNT to base64(service-account-json).",
     )
   }
 
