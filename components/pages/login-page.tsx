@@ -5,7 +5,7 @@ import React from "react"
 import { useState } from "react"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n-context"
-import { Globe, LogIn } from "lucide-react"
+import { Eye, EyeOff, Globe, LogIn } from "lucide-react"
 import { toast } from "sonner"
 
 export function LoginPage() {
@@ -15,6 +15,7 @@ export function LoginPage() {
   const [password, setPassword] = useState("")
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [mode, setMode] = useState<"login" | "reset">("login")
   const [resetLoading, setResetLoading] = useState(false)
   const [resetError, setResetError] = useState("")
@@ -159,15 +160,25 @@ export function LoginPage() {
                   <label htmlFor="password" className="text-sm font-medium text-card-foreground">
                     {t("auth.password")} <span className="text-destructive">*</span>
                   </label>
-                  <input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    placeholder="********"
-                    className="rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                  />
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      placeholder="********"
+                      className="w-full rounded-lg border border-input bg-card px-4 py-2.5 pr-10 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-card-foreground"
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                 </div>
                 <button
                   type="submit"

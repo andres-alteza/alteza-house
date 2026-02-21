@@ -2,20 +2,21 @@
 
 import { useState } from "react"
 import useSWR from "swr"
-import { Menu, Globe, ChevronDown, LogOut, Bell } from "lucide-react"
+import { Menu, Globe, ChevronDown, LogOut, Bell, KeyRound } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n-context"
 import { api } from "@/lib/api-client"
 import type { Contract, Payment } from "@/lib/types"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
 import { usePathname, useRouter } from "next/navigation"
+import { toast } from "sonner"
 
 interface NavbarProps {
   onToggleSidebar: () => void
 }
 
 export function Navbar({ onToggleSidebar }: NavbarProps) {
-  const { user, logout, isAdmin } = useAuth()
+  const { user, logout, isAdmin, sendPasswordReset } = useAuth()
   const { locale, setLocale, t } = useI18n()
   const router = useRouter()
   const pathname = usePathname()
@@ -54,6 +55,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
     : []
   const pendingCount = isAdmin ? adminNotifications.length : tenantContractsReady.length
   const [loggingOut, setLoggingOut] = useState(false)
+  const [resettingPassword, setResettingPassword] = useState(false)
 
   const navigateToNotification = (path: "/contracts" | "/payments") => {
     if (pathname !== path) {
@@ -70,6 +72,30 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
       console.error("Logout error:", error)
     } finally {
       setLoggingOut(false)
+    }
+  }
+
+  const handleResetPassword = async () => {
+    const email = user?.email?.trim()
+    if (!email || resettingPassword) return
+
+    setResettingPassword(true)
+    try {
+      await sendPasswordReset(email)
+      toast.success(t("auth.resetEmailSent"))
+    } catch (error: any) {
+      const code = error?.code || ""
+      if (code === "auth/user-not-found") {
+        toast.success(t("auth.resetEmailSent"))
+      } else if (code === "auth/invalid-email") {
+        toast.error(t("auth.invalidEmail"))
+      } else if (code === "auth/too-many-requests") {
+        toast.error(t("auth.tooManyRequests"))
+      } else {
+        toast.error(t("auth.resetEmailFailed"))
+      }
+    } finally {
+      setResettingPassword(false)
     }
   }
 
@@ -229,6 +255,14 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                 <div className="mt-1 text-[11px] uppercase tracking-wide text-muted-foreground">{roleLabel}</div>
               </div>
               <DropdownMenu.Separator className="my-1 h-px bg-border" />
+              <DropdownMenu.Item
+                onSelect={() => void handleResetPassword()}
+                disabled={resettingPassword || !user?.email}
+                className="flex cursor-pointer items-center gap-2 rounded-md px-3 py-2 text-sm outline-none transition-colors hover:bg-muted focus:bg-muted disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                <KeyRound className="h-4 w-4" />
+                {resettingPassword ? t("general.loading") : t("auth.resetTitle")}
+              </DropdownMenu.Item>
               <DropdownMenu.Item
                 onSelect={() => void handleLogout()}
                 disabled={loggingOut}
