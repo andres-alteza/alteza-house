@@ -134,7 +134,23 @@ export async function sendPasswordResetEmail(email: string) {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    const message = body?.error?.message || `status ${res.status}`
-    throw new Error(`Failed to send Firebase password reset email: ${message}`)
+    const firebaseCode = body?.error?.message || ""
+    const mappedCode =
+      firebaseCode === "EMAIL_NOT_FOUND"
+        ? "auth/user-not-found"
+        : firebaseCode === "INVALID_EMAIL"
+          ? "auth/invalid-email"
+          : firebaseCode === "TOO_MANY_ATTEMPTS_TRY_LATER"
+            ? "auth/too-many-requests"
+            : firebaseCode === "USER_DISABLED"
+              ? "auth/user-disabled"
+              : "auth/internal-error"
+    const error = new Error(
+      `Failed to send Firebase password reset email: ${firebaseCode || `status ${res.status}`}`,
+    ) as Error & { code?: string; firebaseCode?: string; status?: number }
+    error.code = mappedCode
+    error.firebaseCode = firebaseCode
+    error.status = res.status
+    throw error
   }
 }

@@ -10,7 +10,6 @@ import {
 import {
   auth,
   signInWithEmailAndPassword,
-  sendPasswordResetEmail,
   signOut,
   onAuthStateChanged,
   type User as FirebaseUser,
@@ -78,8 +77,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   const sendPasswordReset = async (email: string) => {
-    // Do not leak whether the email exists; caller can show generic messaging.
-    await sendPasswordResetEmail(auth, email)
+    await api.requestPasswordReset(email)
   }
 
   const logout = async () => {

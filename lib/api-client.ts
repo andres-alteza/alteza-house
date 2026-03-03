@@ -36,7 +36,15 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `API error: ${res.status}`)
+    const error = new Error(body.error || `API error: ${res.status}`) as Error & {
+      code?: string
+      status?: number
+    }
+    if (typeof body?.code === "string") {
+      error.code = body.code
+    }
+    error.status = res.status
+    throw error
   }
 
   return res.json() as Promise<T>
@@ -55,7 +63,15 @@ async function apiFetchBlob(url: string, options: RequestInit = {}): Promise<Blo
 
   if (!res.ok) {
     const body = await res.json().catch(() => ({}))
-    throw new Error(body.error || `API error: ${res.status}`)
+    const error = new Error(body.error || `API error: ${res.status}`) as Error & {
+      code?: string
+      status?: number
+    }
+    if (typeof body?.code === "string") {
+      error.code = body.code
+    }
+    error.status = res.status
+    throw error
   }
 
   return res.blob()
@@ -126,6 +142,11 @@ export const api = {
     apiFetch("/api/auth/verify", {
       method: "POST",
       body: JSON.stringify({ token }),
+    }),
+  requestPasswordReset: (email: string): Promise<{ ok: true }> =>
+    apiFetch("/api/auth/reset-password", {
+      method: "POST",
+      body: JSON.stringify({ email }),
     }),
 
   // Houses
