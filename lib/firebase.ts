@@ -1,6 +1,8 @@
 import { initializeApp, getApps, getApp } from "firebase/app"
 import {
+  confirmPasswordReset,
   getAuth,
+  verifyPasswordResetCode,
   signInWithEmailAndPassword,
   sendPasswordResetEmail,
   signOut,
@@ -17,5 +19,13 @@ const firebaseConfig = {
 const app = getApps().length === 0 ? initializeApp(firebaseConfig) : getApp()
 const auth = getAuth(app)
 
-export { auth, signInWithEmailAndPassword, sendPasswordResetEmail, signOut, onAuthStateChanged }
+export {
+  auth,
+  confirmPasswordReset,
+  verifyPasswordResetCode,
+  signInWithEmailAndPassword,
+  sendPasswordResetEmail,
+  signOut,
+  onAuthStateChanged,
+}
 export type { User }
