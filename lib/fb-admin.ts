@@ -117,40 +117,45 @@ export async function updateUserEmailByUid(uid: string, email: string) {
   return getAuth(app).updateUser(uid, { email })
 }
 
-export async function sendPasswordResetEmail(email: string) {
-  const apiKey = process.env.NEXT_PUBLIC_FIREBASE_API_KEY
-  if (!apiKey) {
-    throw new Error("Missing NEXT_PUBLIC_FIREBASE_API_KEY required to send password reset emails.")
+function mapFirebaseAuthErrorCode(rawCode: string): string {
+  const code = rawCode.replace(/^auth\//, "")
+  if (code === "user-not-found" || code === "EMAIL_NOT_FOUND") return "auth/user-not-found"
+  if (code === "invalid-email" || code === "INVALID_EMAIL") return "auth/invalid-email"
+  if (
+    code === "too-many-requests" ||
+    code === "TOO_MANY_ATTEMPTS_TRY_LATER" ||
+    code === "quota-exceeded"
+  ) {
+    return "auth/too-many-requests"
   }
+  if (code === "user-disabled" || code === "USER_DISABLED") return "auth/user-disabled"
+  return "auth/internal-error"
+}
 
-  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/accounts:sendOobCode?key=${apiKey}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      requestType: "PASSWORD_RESET",
+/**
+ * Generate a password reset link via Firebase Admin SDK.
+ *
+ * The returned URL respects the Firebase Auth "Action URL" configured in the
+ * Firebase Console (so it points at our custom /reset-password page when the
+ * console is configured to do so), and we additionally pass `continueUrl` so
+ * Firebase appends it to the link for any post-action redirects.
+ */
+export async function generatePasswordResetLink(email: string, continueUrl?: string) {
+  try {
+    const app = init()
+    const link = await getAuth(app).generatePasswordResetLink(
       email,
-    }),
-  })
-
-  if (!res.ok) {
-    const body = await res.json().catch(() => ({}))
-    const firebaseCode = body?.error?.message || ""
-    const mappedCode =
-      firebaseCode === "EMAIL_NOT_FOUND"
-        ? "auth/user-not-found"
-        : firebaseCode === "INVALID_EMAIL"
-          ? "auth/invalid-email"
-          : firebaseCode === "TOO_MANY_ATTEMPTS_TRY_LATER"
-            ? "auth/too-many-requests"
-            : firebaseCode === "USER_DISABLED"
-              ? "auth/user-disabled"
-              : "auth/internal-error"
+      continueUrl ? { url: continueUrl, handleCodeInApp: false } : undefined
+    )
+    return link
+  } catch (err: any) {
+    const rawCode = typeof err?.code === "string" ? err.code : ""
+    const mappedCode = mapFirebaseAuthErrorCode(rawCode)
     const error = new Error(
-      `Failed to send Firebase password reset email: ${firebaseCode || `status ${res.status}`}`,
-    ) as Error & { code?: string; firebaseCode?: string; status?: number }
+      `Failed to generate Firebase password reset link: ${rawCode || err?.message || "unknown"}`
+    ) as Error & { code?: string; firebaseCode?: string }
     error.code = mappedCode
-    error.firebaseCode = firebaseCode
-    error.status = res.status
+    error.firebaseCode = rawCode
     throw error
   }
 }

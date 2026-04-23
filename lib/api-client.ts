@@ -234,6 +234,8 @@ export const api = {
 
   // Settings
   getSettings: (): Promise<Settings> => apiFetch("/api/settings"),
+  getPublicSettings: (): Promise<{ paymentDueDate: number }> =>
+    apiFetch("/api/settings/public"),
   updateSettings: (data: Settings): Promise<Settings> =>
     apiFetch("/api/settings", { method: "PUT", body: JSON.stringify(data) }),
 }

@@ -123,8 +123,16 @@ export function LoginPage() {
             </div>
           )}
           {mode === "reset" && resetSuccess && (
-            <div className="mb-4 rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-              {resetSuccess}
+            <div className="mb-4 flex flex-col gap-2 rounded-lg bg-primary/10 px-4 py-3 text-sm text-primary">
+              <span>{resetSuccess}</span>
+              <button
+                type="button"
+                onClick={() => void handleSendReset()}
+                disabled={resetLoading}
+                className="self-start text-left text-xs font-medium text-primary underline-offset-2 transition-colors hover:underline disabled:opacity-50"
+              >
+                {resetLoading ? t("general.loading") : t("auth.resetEmailResendPrompt")}
+              </button>
             </div>
           )}
 

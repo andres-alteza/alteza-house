@@ -8,7 +8,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { api } from "@/lib/api-client"
 import type { Contract, Payment } from "@/lib/types"
 import * as DropdownMenu from "@radix-ui/react-dropdown-menu"
-import { usePathname, useRouter } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { toast } from "sonner"
 
 interface NavbarProps {
@@ -19,7 +19,6 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
   const { user, logout, isAdmin, sendPasswordReset } = useAuth()
   const { locale, setLocale, t } = useI18n()
   const router = useRouter()
-  const pathname = usePathname()
   const { data: pendingPayments = [] } = useSWR<Payment[]>(
     isAdmin ? ["payments", { state: "pending" }] : null,
     () => api.getPayments({ state: "pending" }),
@@ -57,10 +56,8 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
   const [loggingOut, setLoggingOut] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
 
-  const navigateToNotification = (path: "/contracts" | "/payments") => {
-    if (pathname !== path) {
-      router.push(path)
-    }
+  const navigateToNotification = (path: string) => {
+    router.push(path)
   }
 
   const handleLogout = async () => {
@@ -166,11 +163,14 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                       (item) =>
                         isAdmin ? (
                           item.kind === "contract" ? (
-                            <button
-                              type="button"
+                            <DropdownMenu.Item
                               key={item.id}
-                              onClick={() => navigateToNotification("/contracts")}
-                              className="w-full rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+                              onSelect={() =>
+                                navigateToNotification(
+                                  `/contracts?contractId=${item.contract.id}`
+                                )
+                              }
+                              className="flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus:bg-muted"
                             >
                               <p className="font-medium text-card-foreground">
                                 {item.contract.tenantName}
@@ -179,13 +179,16 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                                 {t("contracts.status.signed")} - {item.contract.startDate} -{" "}
                                 {item.contract.endDate}
                               </p>
-                            </button>
+                            </DropdownMenu.Item>
                           ) : (
-                            <button
-                              type="button"
+                            <DropdownMenu.Item
                               key={item.id}
-                              onClick={() => navigateToNotification("/payments")}
-                              className="w-full rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+                              onSelect={() =>
+                                navigateToNotification(
+                                  `/payments?paymentId=${item.payment.id}`
+                                )
+                              }
+                              className="flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus:bg-muted"
                             >
                               <p className="font-medium text-card-foreground">
                                 {item.payment.tenantName}
@@ -194,14 +197,17 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                                 {item.payment.houseName} - {t(`month.${item.payment.month}`)}{" "}
                                 {item.payment.year}
                               </p>
-                            </button>
+                            </DropdownMenu.Item>
                           )
                         ) : (
-                          <button
-                            type="button"
+                          <DropdownMenu.Item
                             key={(item as Contract).id}
-                            onClick={() => navigateToNotification("/contracts")}
-                            className="w-full rounded-md px-2 py-2 text-left text-sm transition-colors hover:bg-muted"
+                            onSelect={() =>
+                              navigateToNotification(
+                                `/contracts?contractId=${(item as Contract).id}`
+                              )
+                            }
+                            className="flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus:bg-muted"
                           >
                             <p className="font-medium text-card-foreground">
                               {t("contracts.status.readyToSign")}
@@ -209,7 +215,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                             <p className="text-xs text-muted-foreground">
                               {(item as Contract).startDate} - {(item as Contract).endDate}
                             </p>
-                          </button>
+                          </DropdownMenu.Item>
                         )
                     )
                   )}

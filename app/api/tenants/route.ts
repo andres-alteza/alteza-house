@@ -8,9 +8,16 @@ import { serializeTenant } from "@/lib/serializers/tenant"
 import {
   createUserWithEmailPassword,
   deleteUserByUid,
+  generatePasswordResetLink,
   getUserByEmail,
-  sendPasswordResetEmail,
 } from "@/lib/fb-admin"
+import { sendPasswordResetEmail } from "@/lib/resend"
+
+function resolveAppOrigin(req: NextRequest) {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim()
+  if (envUrl) return envUrl.replace(/\/$/, "")
+  return new URL(req.url).origin
+}
 
 function escapeRegex(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
@@ -101,7 +108,9 @@ export const POST = withAuth(
     createdFirebaseUser = true
 
     try {
-      await sendPasswordResetEmail(normalizedEmail)
+      const continueUrl = `${resolveAppOrigin(req)}/`
+      const resetLink = await generatePasswordResetLink(normalizedEmail, continueUrl)
+      await sendPasswordResetEmail({ to: normalizedEmail, link: resetLink })
       passwordResetEmailSent = true
     } catch (error) {
       await deleteUserByUid(firebaseUid)

@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import useSWR from "swr"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
@@ -9,7 +10,7 @@ import type { Contract, House, Payment, Tenant } from "@/lib/types"
 import { DataTable } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
-import { CheckCircle, XCircle, ImageIcon, Upload, Download, ChevronDown, Save, Loader2 } from "lucide-react"
+import { CheckCircle, ImageIcon, Upload, Download, ChevronDown, Save, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 const PDF_CONTENT_TYPE = "application/pdf"
@@ -89,9 +90,6 @@ export function PaymentsPage() {
   const [filterMonth, setFilterMonth] = useState("")
   const [filterYear, setFilterYear] = useState("")
   const [showFilters, setShowFilters] = useState(false)
-  const [uploadMonth, setUploadMonth] = useState("")
-  const [detailMonth, setDetailMonth] = useState("")
-  const [uploadYear, setUploadYear] = useState("")
   const [proofFile, setProofFile] = useState<File | null>(null)
   const [detailProofFile, setDetailProofFile] = useState<File | null>(null)
   const [uploadError, setUploadError] = useState("")
@@ -101,6 +99,9 @@ export function PaymentsPage() {
   const [openingProof, setOpeningProof] = useState(false)
   const [openingReceipt, setOpeningReceipt] = useState(false)
   const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null)
+  const [autoOpenedPaymentId, setAutoOpenedPaymentId] = useState<string | null>(null)
+  const router = useRouter()
+  const searchParams = useSearchParams()
 
   // Build API filters (server-side filtering for house, month, year)
   const apiFilters: Record<string, string> = {}
@@ -133,8 +134,7 @@ export function PaymentsPage() {
   const contractWindow = activeTenantContract
     ? buildContractWindow(activeTenantContract, now)
     : null
-  const canUploadPaymentProof = !isAdmin && !!tenantProfile && !!activeTenantContract && !!contractWindow
-  const approvedMonths = !isAdmin && activeTenantContract && contractWindow
+  const approvedMonthsForCurrentYear = !isAdmin && activeTenantContract && contractWindow
     ? new Set(
         payments
           .filter(
@@ -146,22 +146,25 @@ export function PaymentsPage() {
           .map((payment) => payment.month)
       )
     : new Set<number>()
-  const uploadMonthOptions = contractWindow
-    ? Array.from(
-        { length: contractWindow.endMonth - contractWindow.startMonth + 1 },
-        (_, index) => contractWindow.startMonth + index
-      ).filter((month) => !approvedMonths.has(month))
-    : []
-  const uploadYearLabel = contractWindow ? String(contractWindow.year) : ""
+  const currentMonth = now.getMonth() + 1
+  const currentYear = now.getFullYear()
+  const isCurrentMonthInContractWindow =
+    !!contractWindow &&
+    currentYear === contractWindow.year &&
+    currentMonth >= contractWindow.startMonth &&
+    currentMonth <= contractWindow.endMonth
+  const isCurrentMonthApproved =
+    isCurrentMonthInContractWindow && approvedMonthsForCurrentYear.has(currentMonth)
+  const autoUploadMonth = isCurrentMonthInContractWindow ? currentMonth : null
+  const autoUploadYear = isCurrentMonthInContractWindow ? currentYear : null
+  const canUploadPaymentProof =
+    !isAdmin &&
+    !!tenantProfile &&
+    !!activeTenantContract &&
+    autoUploadMonth !== null &&
+    !isCurrentMonthApproved
   const canTenantEditSelectedPayment = !isAdmin && selectedPayment?.state === "pending"
-  const detailMonthOptions =
-    canTenantEditSelectedPayment && selectedPayment
-      ? Array.from(new Set([...uploadMonthOptions, selectedPayment.month])).sort((a, b) => a - b)
-      : []
-  const hasPendingChanges =
-    canTenantEditSelectedPayment &&
-    selectedPayment &&
-    (Number(detailMonth) !== selectedPayment.month || !!detailProofFile)
+  const hasPendingChanges = canTenantEditSelectedPayment && selectedPayment && !!detailProofFile
 
   const columns = [
     { key: "tenantName", label: t("tenants.name") },
@@ -196,7 +199,6 @@ export function PaymentsPage() {
 
   const openDetail = (payment: Payment) => {
     setSelectedPayment(payment)
-    setDetailMonth(String(payment.month))
     setDetailProofFile(null)
     setDetailError("")
     if (detailProofInputRef.current) {
@@ -204,6 +206,20 @@ export function PaymentsPage() {
     }
     setIsDetailOpen(true)
   }
+
+  useEffect(() => {
+    const paymentIdParam = searchParams.get("paymentId")
+    if (!paymentIdParam || payments.length === 0 || autoOpenedPaymentId === paymentIdParam) {
+      return
+    }
+    const target = payments.find((payment) => payment.id === paymentIdParam)
+    if (target) {
+      openDetail(target)
+      setAutoOpenedPaymentId(paymentIdParam)
+      router.replace("/payments")
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, payments, autoOpenedPaymentId])
 
   const confirmPayment = async (paymentId: string) => {
     if (confirmingPaymentId) return
@@ -226,9 +242,6 @@ export function PaymentsPage() {
   }
 
   const resetUploadForm = () => {
-    const nextMonth = uploadMonthOptions[0]
-    setUploadMonth(nextMonth ? String(nextMonth) : "")
-    setUploadYear(uploadYearLabel)
     setProofFile(null)
     setUploadError("")
     setUploading(false)
@@ -253,9 +266,6 @@ export function PaymentsPage() {
   }
 
   const openUploadModal = () => {
-    const nextMonth = uploadMonthOptions[0]
-    setUploadMonth(nextMonth ? String(nextMonth) : "")
-    setUploadYear(uploadYearLabel)
     setUploadError("")
     setProofFile(null)
     if (proofInputRef.current) {
@@ -312,7 +322,7 @@ export function PaymentsPage() {
       toast.error(t("payments.missingContractError"))
       return
     }
-    if (!uploadYearLabel || !uploadMonthOptions.length || !uploadMonth) {
+    if (autoUploadMonth === null || autoUploadYear === null || isCurrentMonthApproved) {
       setUploadError(t("payments.missingContractError"))
       toast.error(t("payments.missingContractError"))
       return
@@ -329,8 +339,8 @@ export function PaymentsPage() {
     setUploadError("")
     try {
       const paymentId = crypto.randomUUID()
-      const month = Number(uploadMonth)
-      const year = Number(uploadYear)
+      const month = autoUploadMonth
+      const year = autoUploadYear
 
       const presign = await api.presignPaymentProofUpload({
         filename: proofFile.name,
@@ -379,10 +389,8 @@ export function PaymentsPage() {
       return
     }
 
-    const month = Number(detailMonth)
-    if (!month || !detailMonthOptions.includes(month)) {
-      setDetailError(t("payments.missingContractError"))
-      toast.error(t("payments.missingContractError"))
+    if (!detailProofFile) {
+      setSavingDetail(false)
       return
     }
 
@@ -390,45 +398,31 @@ export function PaymentsPage() {
     setDetailError("")
     try {
       const updatePayload: {
-        month?: number
-        year?: number
         proofImageUrl?: string
       } = {}
 
-      if (month !== selectedPayment.month) {
-        updatePayload.month = month
-        updatePayload.year = selectedPayment.year
+      const contentType =
+        detailProofFile.type || inferContentTypeFromFileName(detailProofFile.name)
+      if (!contentType) {
+        throw new Error(t("payments.invalidProofError"))
       }
-
-      if (detailProofFile) {
-        const contentType =
-          detailProofFile.type || inferContentTypeFromFileName(detailProofFile.name)
-        if (!contentType) {
-          throw new Error(t("payments.invalidProofError"))
-        }
-        const presign = await api.presignPaymentProofUpload({
-          filename: detailProofFile.name,
-          contentType,
-          tenantId: selectedPayment.tenantId,
-          paymentId: selectedPayment.id,
-          year: selectedPayment.year,
-          month,
-        })
-        const uploadResponse = await fetch(presign.uploadUrl, {
-          method: "PUT",
-          headers: { "Content-Type": presign.contentType },
-          body: detailProofFile,
-        })
-        if (!uploadResponse.ok) {
-          throw new Error(`Upload failed with status ${uploadResponse.status}`)
-        }
-        updatePayload.proofImageUrl = presign.objectKey
+      const presign = await api.presignPaymentProofUpload({
+        filename: detailProofFile.name,
+        contentType,
+        tenantId: selectedPayment.tenantId,
+        paymentId: selectedPayment.id,
+        year: selectedPayment.year,
+        month: selectedPayment.month,
+      })
+      const uploadResponse = await fetch(presign.uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": presign.contentType },
+        body: detailProofFile,
+      })
+      if (!uploadResponse.ok) {
+        throw new Error(`Upload failed with status ${uploadResponse.status}`)
       }
-
-      if (!Object.keys(updatePayload).length) {
-        setSavingDetail(false)
-        return
-      }
+      updatePayload.proofImageUrl = presign.objectKey
 
       const updated = await api.updatePayment(selectedPayment.id, updatePayload)
       setSelectedPayment(updated)
@@ -621,32 +615,10 @@ export function PaymentsPage() {
               <InfoField label={t("tenants.name")} value={selectedPayment.tenantName} />
               <InfoField label={t("tenants.email")} value={selectedPayment.tenantEmail} />
               <InfoField label={t("tenants.house")} value={selectedPayment.houseName} />
-              {canTenantEditSelectedPayment ? (
-                <div className="flex flex-col gap-1">
-                  <span className="text-xs font-medium text-muted-foreground">
-                    {t("payments.month")}
-                  </span>
-                  <div className="relative">
-                    <select
-                      value={detailMonth}
-                      onChange={(e) => setDetailMonth(e.target.value)}
-                      className={`${inputClass} w-full appearance-none pr-10`}
-                    >
-                      {detailMonthOptions.map((month) => (
-                        <option key={month} value={month}>
-                          {t(`month.${month}`)} {selectedPayment.year}
-                        </option>
-                      ))}
-                    </select>
-                    <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-                  </div>
-                </div>
-              ) : (
-                <InfoField
-                  label={t("payments.month")}
-                  value={`${t(`month.${selectedPayment.month}`)} ${selectedPayment.year}`}
-                />
-              )}
+              <InfoField
+                label={t("payments.month")}
+                value={`${t(`month.${selectedPayment.month}`)} ${selectedPayment.year}`}
+              />
               <InfoField
                 label={t("payments.amount")}
                 value={`$${selectedPayment.amount.toLocaleString()}`}
@@ -756,36 +728,17 @@ export function PaymentsPage() {
         title={t("payments.upload")}
       >
         <form onSubmit={handleUploadSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-card-foreground">
-                {t("payments.month")} <span className="text-destructive">*</span>
-              </label>
-              <div className="relative">
-                <select
-                  value={uploadMonth}
-                  onChange={(e) => setUploadMonth(e.target.value)}
-                  required
-                  disabled={!uploadMonthOptions.length}
-                  className={`${inputClass} w-full appearance-none pr-10`}
-                >
-                  {uploadMonthOptions.map((month) => (
-                    <option key={month} value={month}>
-                      {t(`month.${month}`)}
-                    </option>
-                  ))}
-                </select>
-                <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              </div>
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-medium text-card-foreground">{t("payments.year")}</label>
-              <div className={`${inputClass} flex min-h-[42px] w-full items-center`}>
-                {uploadYear || "-"}
-              </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-card-foreground">
+              {t("payments.month")}
+            </label>
+            <div className={`${inputClass} flex min-h-[42px] w-full items-center text-muted-foreground`}>
+              {autoUploadMonth !== null
+                ? `${t(`month.${autoUploadMonth}`)} (${t("payments.autoLabel")})`
+                : "-"}
             </div>
           </div>
-          {!uploadMonthOptions.length && (
+          {!canUploadPaymentProof && (
             <p className="text-sm text-muted-foreground">{t("payments.missingContractError")}</p>
           )}
           <div className="flex flex-col gap-1.5">

@@ -128,7 +128,22 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
 
   const sendReportByEmail = async () => {
     if (!isAdmin || sendingEmail) return
-    if (emails.length === 0) {
+
+    let nextEmails = emails
+    const pendingEmail = newEmail.trim().toLowerCase()
+    if (pendingEmail) {
+      if (!pendingEmail.includes("@")) {
+        toast.error(t("settings.emailInvalid"))
+        return
+      }
+      if (!emails.includes(pendingEmail)) {
+        nextEmails = [...emails, pendingEmail]
+        setEmails(nextEmails)
+      }
+      setNewEmail("")
+    }
+
+    if (nextEmails.length === 0) {
       toast.error(t("reports.emailRequired"))
       return
     }
@@ -141,7 +156,7 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
         year: selectedYear || undefined,
         month: selectedMonth || undefined,
         state: reportState,
-        emails,
+        emails: nextEmails,
       })
       toast.success(t("reports.emailSuccess"))
       setIsEmailModalOpen(false)

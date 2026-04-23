@@ -8,7 +8,7 @@ import type { Tenant, House } from "@/lib/types"
 import { DataTable } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
-import { Save, X } from "lucide-react"
+import { Pencil, Save, X } from "lucide-react"
 import { toast } from "sonner"
 
 const ID_TYPE_OPTIONS = [
@@ -62,7 +62,6 @@ export function TenantsPage() {
     tenantIdNumber: "",
     houseId: "",
     parentName: "",
-    parentId: "",
     parentAddress: "",
     parentPhone: "",
     guardianTypeId: "",
@@ -86,7 +85,6 @@ export function TenantsPage() {
       tenantIdNumber: "",
       houseId: houses[0]?.id || "",
       parentName: "",
-      parentId: "",
       parentAddress: "",
       parentPhone: "",
       guardianTypeId: "",
@@ -105,7 +103,6 @@ export function TenantsPage() {
       tenantIdNumber: tenant.tenantIdNumber,
       houseId: tenant.houseId,
       parentName: tenant.parentName,
-      parentId: tenant.parentId,
       parentAddress: tenant.parentAddress,
       parentPhone: tenant.parentPhone,
       guardianTypeId: tenant.guardianTypeId,
@@ -123,7 +120,7 @@ export function TenantsPage() {
     setSaving(true)
     try {
       const house = houses.find((h) => h.id === formData.houseId)
-      const payload = { ...formData, houseName: house?.name || "" }
+      const payload = { ...formData, parentId: "", houseName: house?.name || "" }
       let successMessage = ""
 
       if (editingTenant) {
@@ -192,7 +189,6 @@ export function TenantsPage() {
           columns={columns}
           data={tenants}
           onView={openDetail}
-          onEdit={openEdit}
           onDelete={handleDelete}
         />
       </div>
@@ -324,19 +320,6 @@ export function TenantsPage() {
               />
             </div>
             <div className="flex flex-col gap-1.5">
-              <label htmlFor="parentId" className="text-sm font-medium text-card-foreground">
-                {t("tenants.parentId")} <span className="text-destructive">*</span>
-              </label>
-              <input
-                id="parentId"
-                type="text"
-                value={formData.parentId}
-                onChange={(e) => setFormData({ ...formData, parentId: e.target.value })}
-                required
-                className={inputClass}
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
               <label htmlFor="parentAddress" className="text-sm font-medium text-card-foreground">
                 {t("tenants.parentAddress")} <span className="text-destructive">*</span>
               </label>
@@ -345,6 +328,38 @@ export function TenantsPage() {
                 type="text"
                 value={formData.parentAddress}
                 onChange={(e) => setFormData({ ...formData, parentAddress: e.target.value })}
+                required
+                className={inputClass}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="guardianTypeId" className="text-sm font-medium text-card-foreground">
+                {t("tenants.guardianTypeId")} <span className="text-destructive">*</span>
+              </label>
+              <select
+                id="guardianTypeId"
+                value={formData.guardianTypeId}
+                onChange={(e) => setFormData({ ...formData, guardianTypeId: e.target.value })}
+                required
+                className={inputClass}
+              >
+                <option value="">--</option>
+                {ID_TYPE_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label htmlFor="guardianIdNumber" className="text-sm font-medium text-card-foreground">
+                {t("tenants.guardianIdNumber")} <span className="text-destructive">*</span>
+              </label>
+              <input
+                id="guardianIdNumber"
+                type="text"
+                value={formData.guardianIdNumber}
+                onChange={(e) => setFormData({ ...formData, guardianIdNumber: e.target.value })}
                 required
                 className={inputClass}
               />
@@ -361,40 +376,6 @@ export function TenantsPage() {
                 required
                 className={inputClass}
               />
-            </div>
-            <div className="col-span-full grid grid-cols-1 gap-4 sm:grid-cols-2">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="guardianTypeId" className="text-sm font-medium text-card-foreground">
-                  {t("tenants.guardianTypeId")} <span className="text-destructive">*</span>
-                </label>
-                <select
-                  id="guardianTypeId"
-                  value={formData.guardianTypeId}
-                  onChange={(e) => setFormData({ ...formData, guardianTypeId: e.target.value })}
-                  required
-                  className={inputClass}
-                >
-                  <option value="">--</option>
-                  {ID_TYPE_OPTIONS.map((option) => (
-                    <option key={option.value} value={option.value}>
-                      {option.label}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="guardianIdNumber" className="text-sm font-medium text-card-foreground">
-                  {t("tenants.guardianIdNumber")} <span className="text-destructive">*</span>
-                </label>
-                <input
-                  id="guardianIdNumber"
-                  type="text"
-                  value={formData.guardianIdNumber}
-                  onChange={(e) => setFormData({ ...formData, guardianIdNumber: e.target.value })}
-                  required
-                  className={inputClass}
-                />
-              </div>
             </div>
           </div>
 
@@ -427,23 +408,41 @@ export function TenantsPage() {
         size="lg"
       >
         {selectedTenant && (
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-            <InfoField label={t("tenants.name")} value={selectedTenant.name} />
-            <InfoField label={t("tenants.email")} value={selectedTenant.email} />
-            <InfoField label={t("tenants.phone")} value={selectedTenant.phone} />
-            <InfoField label={t("tenants.tenantTypeId")} value={selectedTenant.tenantTypeId} />
-            <InfoField label={t("tenants.tenantIdNumber")} value={selectedTenant.tenantIdNumber} />
-            <InfoField label={t("tenants.house")} value={selectedTenant.houseName} />
-            <div className="col-span-full border-t border-border pt-4">
-              <h3 className="mb-3 text-sm font-bold text-card-foreground">{t("tenants.guardianInfo")}</h3>
-              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-                <InfoField label={t("tenants.parentName")} value={selectedTenant.parentName} />
-                <InfoField label={t("tenants.parentId")} value={selectedTenant.parentId} />
-                <InfoField label={t("tenants.parentAddress")} value={selectedTenant.parentAddress} />
-                <InfoField label={t("tenants.parentPhone")} value={selectedTenant.parentPhone} />
-                <InfoField label={t("tenants.guardianTypeId")} value={selectedTenant.guardianTypeId} />
-                <InfoField label={t("tenants.guardianIdNumber")} value={selectedTenant.guardianIdNumber} />
+          <div className="flex flex-col gap-4">
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <InfoField label={t("tenants.name")} value={selectedTenant.name} />
+              <InfoField label={t("tenants.email")} value={selectedTenant.email} />
+              <InfoField label={t("tenants.phone")} value={selectedTenant.phone} />
+              <InfoField label={t("tenants.tenantTypeId")} value={selectedTenant.tenantTypeId} />
+              <InfoField label={t("tenants.tenantIdNumber")} value={selectedTenant.tenantIdNumber} />
+              <InfoField label={t("tenants.house")} value={selectedTenant.houseName} />
+              <div className="col-span-full border-t border-border pt-4">
+                <h3 className="mb-3 text-sm font-bold text-card-foreground">{t("tenants.guardianInfo")}</h3>
+                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                  <InfoField label={t("tenants.parentName")} value={selectedTenant.parentName} />
+                  {selectedTenant.parentId ? (
+                    <InfoField label={t("tenants.parentId")} value={selectedTenant.parentId} />
+                  ) : null}
+                  <InfoField label={t("tenants.parentAddress")} value={selectedTenant.parentAddress} />
+                  <InfoField label={t("tenants.parentPhone")} value={selectedTenant.parentPhone} />
+                  <InfoField label={t("tenants.guardianTypeId")} value={selectedTenant.guardianTypeId} />
+                  <InfoField label={t("tenants.guardianIdNumber")} value={selectedTenant.guardianIdNumber} />
+                </div>
               </div>
+            </div>
+
+            <div className="flex justify-end border-t border-border pt-4">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsDetailOpen(false)
+                  openEdit(selectedTenant)
+                }}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+              >
+                <Pencil className="h-4 w-4" />
+                {t("general.edit")}
+              </button>
             </div>
           </div>
         )}

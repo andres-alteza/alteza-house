@@ -8,9 +8,16 @@ import { settingsSchema } from "@/lib/schemas/settings"
 import {
   createUserWithEmailPassword,
   deleteUserByUid,
+  generatePasswordResetLink,
   getUserByEmail,
-  sendPasswordResetEmail,
 } from "@/lib/fb-admin"
+import { sendPasswordResetEmail } from "@/lib/resend"
+
+function resolveAppOrigin(req: NextRequest) {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim()
+  if (envUrl) return envUrl.replace(/\/$/, "")
+  return new URL(req.url).origin
+}
 
 type SettingsDoc = {
   _id: string
@@ -108,6 +115,7 @@ export const PUT = withAuth(
   }
 
   try {
+    const continueUrl = `${resolveAppOrigin(req)}/`
     for (const adminEmail of addedAdminEmails) {
       const existingFirebaseUser = await getUserByEmail(adminEmail)
       if (!existingFirebaseUser) {
@@ -119,7 +127,8 @@ export const PUT = withAuth(
         createdFirebaseUserUids.push(firebaseUser.uid)
       }
 
-      await sendPasswordResetEmail(adminEmail)
+      const resetLink = await generatePasswordResetLink(adminEmail, continueUrl)
+      await sendPasswordResetEmail({ to: adminEmail, link: resetLink })
     }
 
     await col.updateOne(

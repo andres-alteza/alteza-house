@@ -1,7 +1,8 @@
 "use client"
 
-import { useRef, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import useSWR from "swr"
+import { useRouter, useSearchParams } from "next/navigation"
 import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
@@ -9,7 +10,7 @@ import type { Contract, Tenant } from "@/lib/types"
 import { DataTable } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
-import { Save, X, Download, Upload, Eye, Pencil, CheckCircle, ChevronDown, Trash2, Loader2 } from "lucide-react"
+import { Save, X, Download, Upload, CheckCircle, ChevronDown, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
 
 const PDF_CONTENT_TYPE = "application/pdf"
@@ -33,6 +34,8 @@ function suggestContractEndDate(startDate: string) {
 export function ContractsPage() {
   const { t } = useI18n()
   const { isAdmin } = useAuth()
+  const router = useRouter()
+  const searchParams = useSearchParams()
   const { data: contracts = [], mutate } = useSWR<Contract[]>("contracts", api.getContracts)
   const { data: tenants = [] } = useSWR<Tenant[]>("tenants", api.getTenants)
   const signedInputRef = useRef<HTMLInputElement | null>(null)
@@ -50,6 +53,8 @@ export function ContractsPage() {
   const [openingDraft, setOpeningDraft] = useState(false)
   const [openingSigned, setOpeningSigned] = useState(false)
   const [finishing, setFinishing] = useState(false)
+  const [confirmingFinish, setConfirmingFinish] = useState(false)
+  const [autoOpenedContractId, setAutoOpenedContractId] = useState<string | null>(null)
   const [approvingContractId, setApprovingContractId] = useState<string | null>(null)
   const [deletingContractId, setDeletingContractId] = useState<string | null>(null)
   const [detailError, setDetailError] = useState("")
@@ -155,6 +160,23 @@ export function ContractsPage() {
   const canDeleteContract = (contract: Contract) => isAdmin && !isContractLocked(contract)
 
   const openViewDetail = (contract: Contract) => openDetail(contract, "view")
+
+  useEffect(() => {
+    const contractIdParam = searchParams.get("contractId")
+    if (!contractIdParam || contracts.length === 0 || autoOpenedContractId === contractIdParam) {
+      return
+    }
+    const target = contracts.find((contract) => contract.id === contractIdParam)
+    if (target) {
+      const locked = target.status === "approved" || target.status === "finished"
+      const mode = !isAdmin || locked ? "view" : "edit"
+      openDetail(target, mode)
+      setAutoOpenedContractId(contractIdParam)
+      router.replace("/contracts")
+    }
+    // openDetail/router are stable references in practice; only react to params/contracts changes.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams, contracts, autoOpenedContractId, isAdmin])
 
   const openEditDetail = (contract: Contract) => {
     if (isContractLocked(contract)) {
@@ -379,6 +401,7 @@ export function ContractsPage() {
       await api.finishContract(selectedContract.id, { endDate: getCurrentLocalDate() })
       await refreshContracts(selectedContract.id)
       toast.success(t("contracts.finishedSuccess"))
+      setConfirmingFinish(false)
     } catch (error) {
       console.error("Finish contract error:", error)
       setDetailError(t("contracts.finishError"))
@@ -500,57 +523,42 @@ export function ContractsPage() {
         <DataTable
           columns={columns}
           data={filteredContracts}
+          onView={(contract) =>
+            isContractLocked(contract) || !isAdmin
+              ? openViewDetail(contract)
+              : openEditDetail(contract)
+          }
           actions={(contract) => {
-            if (!isContractLocked(contract)) {
-              return (
-                <div className="flex items-center gap-1">
-                  {isAdmin && contract.status === "signed" && (
-                    <button
-                      type="button"
-                      onClick={() => void approveContract(contract)}
-                      disabled={approvingContractId === contract.id}
-                      className="rounded p-1.5 text-success transition-colors hover:bg-success/10 disabled:opacity-50"
-                      aria-label="Approve"
-                    >
-                      {approvingContractId === contract.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4" />
-                      )}
-                    </button>
-                  )}
+            if (isContractLocked(contract)) return null
+            return (
+              <div className="flex items-center gap-1">
+                {isAdmin && contract.status === "signed" && (
                   <button
                     type="button"
-                    onClick={() => (isAdmin ? openEditDetail(contract) : openViewDetail(contract))}
-                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                    aria-label="Edit"
+                    onClick={() => void approveContract(contract)}
+                    disabled={approvingContractId === contract.id}
+                    className="rounded p-1.5 text-success transition-colors hover:bg-success/10 disabled:opacity-50"
+                    aria-label="Approve"
                   >
-                    <Pencil className="h-4 w-4" />
+                    {approvingContractId === contract.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
                   </button>
-                  {canDeleteContract(contract) && (
-                    <button
-                      type="button"
-                      onClick={() => deleteContract(contract)}
-                      disabled={deletingContractId === contract.id}
-                      className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
-                      aria-label="Delete"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </button>
-                  )}
-                </div>
-              )
-            }
-
-            return (
-              <button
-                type="button"
-                onClick={() => openViewDetail(contract)}
-                className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                aria-label="View"
-              >
-                <Eye className="h-4 w-4" />
-              </button>
+                )}
+                {canDeleteContract(contract) && (
+                  <button
+                    type="button"
+                    onClick={() => deleteContract(contract)}
+                    disabled={deletingContractId === contract.id}
+                    className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive disabled:opacity-50"
+                    aria-label="Delete"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                )}
+              </div>
             )
           }}
         />
@@ -844,12 +852,12 @@ export function ContractsPage() {
                 {isAdmin && selectedContract.status === "approved" && (
                   <button
                     type="button"
-                    onClick={finishContract}
+                    onClick={() => setConfirmingFinish(true)}
                     disabled={finishing}
                     className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
                   >
                     <CheckCircle className="h-4 w-4" />
-                    {finishing ? t("general.loading") : t("contracts.finish")}
+                    {finishing ? t("general.loading") : t("contracts.finishContract")}
                   </button>
                 )}
               </div>
@@ -901,6 +909,38 @@ export function ContractsPage() {
             )}
           </div>
         )}
+      </Modal>
+
+      <Modal
+        isOpen={confirmingFinish}
+        onClose={() => {
+          if (!finishing) setConfirmingFinish(false)
+        }}
+        title={t("contracts.finishContract")}
+        size="sm"
+      >
+        <div className="flex flex-col gap-5">
+          <p className="text-sm text-card-foreground">{t("contracts.finishConfirm")}</p>
+          <div className="flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+            <button
+              type="button"
+              onClick={() => setConfirmingFinish(false)}
+              disabled={finishing}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted sm:w-auto"
+            >
+              {t("general.cancel")}
+            </button>
+            <button
+              type="button"
+              onClick={() => void finishContract()}
+              disabled={finishing}
+              className="inline-flex w-full items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50 sm:w-auto"
+            >
+              <CheckCircle className="h-4 w-4" />
+              {finishing ? t("general.loading") : t("contracts.finishContract")}
+            </button>
+          </div>
+        </div>
       </Modal>
     </div>
   )

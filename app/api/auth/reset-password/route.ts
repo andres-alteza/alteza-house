@@ -1,16 +1,25 @@
 import { NextRequest, NextResponse } from "next/server"
 import { parseJson } from "@/lib/api-helpers"
-import { sendPasswordResetEmail } from "@/lib/fb-admin"
+import { generatePasswordResetLink } from "@/lib/fb-admin"
+import { sendPasswordResetEmail } from "@/lib/resend"
 import { passwordResetSchema } from "@/lib/schemas/auth"
+
+function resolveAppOrigin(req: NextRequest) {
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL?.trim() || process.env.APP_URL?.trim()
+  if (envUrl) return envUrl.replace(/\/$/, "")
+  return new URL(req.url).origin
+}
 
 export async function POST(req: NextRequest) {
   try {
     const parsed = await parseJson(req, passwordResetSchema)
     if ("error" in parsed) return parsed.error
     const email = parsed.data.email.toLowerCase()
+    const continueUrl = `${resolveAppOrigin(req)}/`
 
     try {
-      await sendPasswordResetEmail(email)
+      const link = await generatePasswordResetLink(email, continueUrl)
+      await sendPasswordResetEmail({ to: email, link })
       return NextResponse.json({ ok: true })
     } catch (error: any) {
       const code = error?.code || "auth/internal-error"
@@ -28,6 +37,7 @@ export async function POST(req: NextRequest) {
         return NextResponse.json({ error: "Too many requests", code }, { status: 429 })
       }
 
+      console.error("Password reset email error:", error)
       return NextResponse.json({ error: "Failed to send reset email", code }, { status: 500 })
     }
   } catch {

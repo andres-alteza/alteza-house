@@ -3,7 +3,7 @@
 import React from "react"
 
 import { useState } from "react"
-import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Eye, Pencil, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, ChevronsLeft, ChevronsRight, Trash2 } from "lucide-react"
 import { useI18n } from "@/lib/i18n-context"
 import { cn } from "@/lib/utils"
 
@@ -61,7 +61,8 @@ export function DataTable<T extends { id: string }>({
 
   const totalPages = Math.ceil(sortedData.length / rowsPerPage)
   const paginatedData = sortedData.slice(page * rowsPerPage, (page + 1) * rowsPerPage)
-  const hasActions = onView || onEdit || onDelete || actions
+  const rowClickHandler = onView ?? onEdit
+  const hasActions = onDelete || actions
 
   return (
     <div className="w-full">
@@ -104,7 +105,14 @@ export function DataTable<T extends { id: string }>({
               </tr>
             ) : (
               paginatedData.map((item) => (
-                <tr key={item.id} className="border-b border-border/50 transition-colors hover:bg-muted/30">
+                <tr
+                  key={item.id}
+                  onClick={rowClickHandler ? () => rowClickHandler(item) : undefined}
+                  className={cn(
+                    "border-b border-border/50 transition-colors hover:bg-muted/30",
+                    rowClickHandler && "cursor-pointer"
+                  )}
+                >
                   {columns.map((col) => (
                     <td key={col.key} className="px-4 py-3 text-sm text-foreground">
                       {col.render
@@ -113,29 +121,12 @@ export function DataTable<T extends { id: string }>({
                     </td>
                   ))}
                   {hasActions && (
-                    <td className="px-4 py-3 text-right">
+                    <td
+                      className="px-4 py-3 text-right"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <div className="inline-flex items-center gap-1">
                         {actions && actions(item)}
-                        {onView && (
-                          <button
-                            type="button"
-                            onClick={() => onView(item)}
-                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                            aria-label="View"
-                          >
-                            <Eye className="h-4 w-4" />
-                          </button>
-                        )}
-                        {onEdit && (
-                          <button
-                            type="button"
-                            onClick={() => onEdit(item)}
-                            className="rounded p-1.5 text-muted-foreground transition-colors hover:bg-primary/10 hover:text-primary"
-                            aria-label="Edit"
-                          >
-                            <Pencil className="h-4 w-4" />
-                          </button>
-                        )}
                         {onDelete && (
                           <button
                             type="button"

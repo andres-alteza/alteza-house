@@ -14,7 +14,7 @@ export interface Tenant {
   houseId: string
   houseName: string
   parentName: string
-  parentId: string
+  parentId?: string
   parentAddress: string
   parentPhone: string
   guardianTypeId: string

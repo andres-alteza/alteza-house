@@ -134,6 +134,120 @@ export async function sendMonthlyUnpaidReportEmail({
   })
 }
 
+function escapeHtml(value: string) {
+  return value
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;")
+}
+
+function buildPasswordResetHtml({ email, link }: { email: string; link: string }) {
+  const safeEmail = escapeHtml(email)
+  const safeLink = escapeHtml(link)
+
+  return `<!DOCTYPE html>
+<html>
+  <body style="margin:0; padding:0; background-color:#f3f4f6; font-family: Inter, Arial, sans-serif;">
+    <table width="100%" cellpadding="0" cellspacing="0" style="padding: 20px;">
+      <tr>
+        <td align="center">
+
+          <!-- Card -->
+          <table width="480" cellpadding="0" cellspacing="0" style="background-color:#ffffff; border-radius:12px; padding:32px; box-shadow:0 6px 20px rgba(0,0,0,0.06);">
+
+            <!-- Header -->
+            <tr>
+              <td style="font-size:20px; font-weight:600; color:#111827; padding-bottom:8px;">
+                Alteza House
+              </td>
+            </tr>
+
+            <!-- Title -->
+            <tr>
+              <td style="font-size:18px; font-weight:600; color:#374151; padding-bottom:16px;">
+                Configura tu contraseña
+              </td>
+            </tr>
+
+            <!-- Body -->
+            <tr>
+              <td style="font-size:14px; color:#6b7280; line-height:1.6; padding-bottom:24px;">
+                Recibimos una solicitud para configurar la contraseña de la cuenta asociada a <strong>${safeEmail}</strong>. Usa el siguiente enlace para continuar.
+              </td>
+            </tr>
+
+            <!-- Button -->
+            <tr>
+              <td align="center" style="padding-bottom:24px;">
+                <a href="${safeLink}"
+                   style="background-color:#6D28D9; color:#ffffff; text-decoration:none; padding:12px 22px; border-radius:8px; font-size:14px; font-weight:500; display:inline-block;">
+                  Configurar contraseña
+                </a>
+              </td>
+            </tr>
+
+            <!-- Secondary text -->
+            <tr>
+              <td style="font-size:13px; color:#6b7280; line-height:1.5; padding-bottom:16px;">
+                Este enlace es seguro y te permitirá definir tu contraseña.
+              </td>
+            </tr>
+
+            <!-- Footer -->
+            <tr>
+              <td style="font-size:12px; color:#9ca3af; padding-top:16px; border-top:1px solid #e5e7eb;">
+                Si no solicitaste esta acción, puedes ignorar este mensaje.<br><br>
+                © Alteza House
+              </td>
+            </tr>
+
+          </table>
+
+        </td>
+      </tr>
+    </table>
+  </body>
+</html>`
+}
+
+function buildPasswordResetText({ email, link }: { email: string; link: string }) {
+  return [
+    "Alteza House",
+    "Configura tu contraseña",
+    "",
+    `Recibimos una solicitud para configurar la contraseña de la cuenta asociada a ${email}. Usa el siguiente enlace para continuar:`,
+    link,
+    "",
+    "Este enlace es seguro y te permitirá definir tu contraseña.",
+    "",
+    "Si no solicitaste esta acción, puedes ignorar este mensaje.",
+    "© Alteza House",
+  ].join("\n")
+}
+
+export async function sendPasswordResetEmail({
+  to,
+  link,
+  from,
+}: {
+  to: string
+  link: string
+  from?: string
+}) {
+  const resend = getResendClient()
+  const sender = from?.trim() || process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
+
+  await sendEmailOrThrow(resend, {
+    from: sender,
+    to: [to],
+    subject: "Alteza House — Configura tu contraseña",
+    html: buildPasswordResetHtml({ email: to, link }),
+    text: buildPasswordResetText({ email: to, link }),
+  })
+}
+
 export async function sendPaymentsReportEmail({
   to,
   from,

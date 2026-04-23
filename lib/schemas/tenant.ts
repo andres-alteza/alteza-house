@@ -9,7 +9,7 @@ export const createTenantSchema = z.object({
   houseId: z.string().trim().min(1, "House is required"),
   houseName: z.string().trim(),
   parentName: z.string().trim().min(1, "Guardian name is required"),
-  parentId: z.string().trim().min(1, "Guardian ID is required"),
+  parentId: z.string().trim().optional().default(""),
   parentAddress: z.string().trim().min(1, "Guardian address is required"),
   parentPhone: z.string().trim().min(1, "Guardian phone is required"),
   guardianTypeId: z.string().trim().min(1, "Guardian ID type is required"),

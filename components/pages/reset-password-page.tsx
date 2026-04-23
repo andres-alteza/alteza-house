@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Eye, EyeOff, Globe, KeyRound } from "lucide-react"
+import { CheckCircle, Eye, EyeOff, Globe, KeyRound } from "lucide-react"
 import { auth, confirmPasswordReset, verifyPasswordResetCode } from "@/lib/firebase"
 import { useI18n } from "@/lib/i18n-context"
 
@@ -129,10 +129,18 @@ export function ResetPasswordPage() {
         <div className="rounded-2xl bg-card p-6 shadow-2xl sm:p-8">
           <div className="mb-8 text-center">
             <div className="mb-4 inline-flex h-16 w-16 items-center justify-center rounded-2xl bg-linear-to-br from-primary to-[#7c4ddb]">
-              <KeyRound className="h-7 w-7 text-primary-foreground" />
+              {success ? (
+                <CheckCircle className="h-7 w-7 text-primary-foreground" />
+              ) : (
+                <KeyRound className="h-7 w-7 text-primary-foreground" />
+              )}
             </div>
-            <h1 className="text-2xl font-bold text-card-foreground">{t("auth.resetPasswordTitle")}</h1>
-            <p className="mt-1 text-sm text-muted-foreground">{t("auth.resetPasswordSubtitle")}</p>
+            <h1 className="text-2xl font-bold text-card-foreground">
+              {success ? t("auth.resetPasswordSuccessTitle") : t("auth.resetPasswordTitle")}
+            </h1>
+            <p className="mt-1 text-sm text-muted-foreground">
+              {success ? t("auth.resetPasswordSuccess") : t("auth.resetPasswordSubtitle")}
+            </p>
           </div>
 
           {verifying ? (
@@ -141,18 +149,13 @@ export function ResetPasswordPage() {
               <p className="text-sm text-muted-foreground">{t("auth.verifyingResetLink")}</p>
             </div>
           ) : success ? (
-            <div className="space-y-4">
-              <div className="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
-                {t("auth.resetPasswordSuccess")}
-              </div>
-              <button
-                type="button"
-                onClick={() => router.push("/")}
-                className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
-              >
-                {t("auth.backToLogin")}
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => router.push("/")}
+              className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+            >
+              {t("auth.goToLogin")}
+            </button>
           ) : (
             <>
               {error && (
