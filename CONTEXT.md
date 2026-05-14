@@ -37,7 +37,7 @@ The sum of contract-month rent amounts that do not have enough approved payments
 _Avoid_: Pending payments
 
 **WhatsApp Payment Reminder**:
-A template message sent after the payment due day to tenants and guardians with an overdue balance.
+A daily template message sent after the payment due day to tenants and guardians while they have an overdue balance.
 _Avoid_: Collection notice
 
 ## Relationships
@@ -47,7 +47,7 @@ _Avoid_: Collection notice
 - A **Contract** defines the monthly rent used to calculate an **Overdue Balance**.
 - A **Pending Payment Proof** does not reduce the **Overdue Balance**.
 - An **Approved Payment** reduces the **Overdue Balance** for its contract month.
-- A **WhatsApp Payment Reminder** is sent to both the **Tenant** and **Guardian** when the **Overdue Balance** is greater than zero.
+- A **WhatsApp Payment Reminder** is sent to both the **Tenant** and **Guardian** each day after the **Payment Due Day** while the **Overdue Balance** is greater than zero.
 
 ## Example Dialogue
 

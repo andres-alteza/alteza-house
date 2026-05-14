@@ -19,6 +19,7 @@ type WhatsAppReminderLogDoc = {
   tenantName: string
   year: number
   month: number
+  reminderDate: string
   recipientRole: "tenant" | "guardian"
   recipientName: string
   recipientPhone: string
@@ -45,7 +46,8 @@ function getBogotaDateParts(now = new Date()) {
   const year = get("year")
   const month = get("month")
   const day = get("day")
-  return { year, month, day }
+  const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+  return { year, month, day, date }
 }
 
 function isAuthorized(req: NextRequest) {
@@ -68,9 +70,11 @@ function isAuthorized(req: NextRequest) {
 async function sendWhatsAppPaymentReminders({
   reminders,
   config,
+  reminderDate,
 }: {
   reminders: OverduePaymentReminder[]
   config: TwilioWhatsAppConfig
+  reminderDate: string
 }) {
   const logsCol = await getCollection<WhatsAppReminderLogDoc>("whatsappNotificationLogs")
   const summary = {
@@ -96,6 +100,7 @@ async function sendWhatsAppPaymentReminders({
 
       const key = [
         config.contentSid,
+        reminderDate,
         reminder.year,
         reminder.month,
         reminder.tenantId,
@@ -119,6 +124,7 @@ async function sendWhatsAppPaymentReminders({
             tenantName: reminder.tenantName,
             year: reminder.year,
             month: reminder.month,
+            reminderDate,
             recipientRole: recipient.role,
             recipientName: recipient.name,
             recipientPhone: normalizedPhone,
@@ -185,15 +191,18 @@ export async function GET(req: NextRequest) {
     return NextResponse.json({ ok: true, skipped: true, reason: "notifications_disabled" })
   }
 
-  const { year, month, day } = getBogotaDateParts()
-  const expectedDay = settings.paymentDueDate + 1
-  if (day !== expectedDay) {
+  const { year, month, day, date } = getBogotaDateParts()
+  const reportDay = settings.paymentDueDate + 1
+  const shouldSendReports = day === reportDay
+  const shouldSendWhatsAppReminders = day > settings.paymentDueDate
+
+  if (!shouldSendReports && !shouldSendWhatsAppReminders) {
     return NextResponse.json({
       ok: true,
       skipped: true,
-      reason: "not_due_day_plus_one",
+      reason: "before_payment_due_day",
       today: day,
-      expectedDay,
+      paymentDueDate: settings.paymentDueDate,
     })
   }
 
@@ -201,11 +210,13 @@ export async function GET(req: NextRequest) {
     ? settings.notificationEmails
     : settings.adminEmails
 
-  const overdueReminders = await buildOverduePaymentReminders({
-    year,
-    month,
-    paymentDueDate: settings.paymentDueDate,
-  })
+  const overdueReminders = shouldSendWhatsAppReminders
+    ? await buildOverduePaymentReminders({
+        year,
+        month,
+        paymentDueDate: settings.paymentDueDate,
+      })
+    : []
   let whatsappConfig: TwilioWhatsAppConfig | null = null
   if (overdueReminders.length) {
     try {
@@ -216,12 +227,19 @@ export async function GET(req: NextRequest) {
     }
   }
 
-  if (!emailRecipients.length && !overdueReminders.length) {
-    return NextResponse.json({ ok: true, skipped: true, reason: "no_notification_recipients" })
+  if (!shouldSendReports && !overdueReminders.length) {
+    return NextResponse.json({
+      ok: true,
+      skipped: true,
+      reason: "no_overdue_tenants",
+      month,
+      year,
+      reminderDate: date,
+    })
   }
 
   try {
-    if (emailRecipients.length) {
+    if (shouldSendReports && emailRecipients.length) {
       const paidReport = await buildPaymentsReport({ state: "approved", year, month })
       const unpaidReport = await buildPaymentsReport({ state: "pending", year, month })
       const from = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
@@ -264,6 +282,7 @@ export async function GET(req: NextRequest) {
     whatsappSummary = await sendWhatsAppPaymentReminders({
       reminders: overdueReminders,
       config: whatsappConfig,
+      reminderDate: date,
     })
   }
 
@@ -274,7 +293,8 @@ export async function GET(req: NextRequest) {
         sent: true,
         month,
         year,
-        reports: emailRecipients.length ? ["paid", "unpaid"] : [],
+        reminderDate: date,
+        reports: shouldSendReports && emailRecipients.length ? ["paid", "unpaid"] : [],
         emailRecipients: emailRecipients.length,
         whatsapp: whatsappSummary,
       },
@@ -287,7 +307,8 @@ export async function GET(req: NextRequest) {
     sent: true,
     month,
     year,
-    reports: emailRecipients.length ? ["paid", "unpaid"] : [],
+    reminderDate: date,
+    reports: shouldSendReports && emailRecipients.length ? ["paid", "unpaid"] : [],
     emailRecipients: emailRecipients.length,
     whatsapp: whatsappSummary,
   })
