@@ -1,7 +1,36 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getAppSettings } from "@/lib/app-settings"
+import { getCollection } from "@/lib/mongodb"
+import { buildOverduePaymentReminders, type OverduePaymentReminder } from "@/lib/payment-reminders"
 import { buildPaymentsReport } from "@/lib/payments-report"
 import { sendPaymentsReportEmail } from "@/lib/resend"
+import {
+  formatCurrencyForWhatsApp,
+  getTwilioWhatsAppConfig,
+  normalizeWhatsAppPhone,
+  sendWhatsAppTemplate,
+  type TwilioWhatsAppConfig,
+} from "@/lib/twilio-whatsapp"
+
+type WhatsAppReminderLogDoc = {
+  key: string
+  tenantId: string
+  contractId: string
+  tenantName: string
+  year: number
+  month: number
+  recipientRole: "tenant" | "guardian"
+  recipientName: string
+  recipientPhone: string
+  templateSid: string
+  status: "sending" | "sent" | "failed"
+  attempts: number
+  twilioMessageSid?: string
+  twilioStatus?: string
+  error?: string
+  createdAt: Date
+  updatedAt: Date
+}
 
 function getBogotaDateParts(now = new Date()) {
   const formatter = new Intl.DateTimeFormat("en-CA", {
@@ -36,6 +65,117 @@ function isAuthorized(req: NextRequest) {
   return { ok: true as const }
 }
 
+async function sendWhatsAppPaymentReminders({
+  reminders,
+  config,
+}: {
+  reminders: OverduePaymentReminder[]
+  config: TwilioWhatsAppConfig
+}) {
+  const logsCol = await getCollection<WhatsAppReminderLogDoc>("whatsappNotificationLogs")
+  const summary = {
+    targets: reminders.length,
+    attempted: 0,
+    sent: 0,
+    skippedDuplicate: 0,
+    skippedInvalidPhone: 0,
+    failed: 0,
+    errors: [] as string[],
+  }
+
+  for (const reminder of reminders) {
+    const phonesSeenForTenant = new Set<string>()
+
+    for (const recipient of reminder.recipients) {
+      const normalizedPhone = normalizeWhatsAppPhone(recipient.phone)
+      if (!normalizedPhone || phonesSeenForTenant.has(normalizedPhone)) {
+        summary.skippedInvalidPhone += normalizedPhone ? 0 : 1
+        continue
+      }
+      phonesSeenForTenant.add(normalizedPhone)
+
+      const key = [
+        config.contentSid,
+        reminder.year,
+        reminder.month,
+        reminder.tenantId,
+        reminder.contractId,
+        normalizedPhone,
+      ].join(":")
+      const existingSent = await logsCol.findOne({ key, status: "sent" })
+      if (existingSent) {
+        summary.skippedDuplicate += 1
+        continue
+      }
+
+      summary.attempted += 1
+      const now = new Date()
+      await logsCol.updateOne(
+        { key },
+        {
+          $set: {
+            tenantId: reminder.tenantId,
+            contractId: reminder.contractId,
+            tenantName: reminder.tenantName,
+            year: reminder.year,
+            month: reminder.month,
+            recipientRole: recipient.role,
+            recipientName: recipient.name,
+            recipientPhone: normalizedPhone,
+            templateSid: config.contentSid,
+            status: "sending",
+            updatedAt: now,
+          },
+          $setOnInsert: { key, createdAt: now },
+          $inc: { attempts: 1 },
+          $unset: { error: "" },
+        },
+        { upsert: true }
+      )
+
+      try {
+        const result = await sendWhatsAppTemplate(config, {
+          to: normalizedPhone,
+          variables: {
+            "1": reminder.tenantName,
+            "2": reminder.dueDateLabel,
+            "3": formatCurrencyForWhatsApp(reminder.pendingAmount),
+          },
+        })
+
+        await logsCol.updateOne(
+          { key },
+          {
+            $set: {
+              status: "sent",
+              twilioMessageSid: result.sid,
+              twilioStatus: result.status,
+              updatedAt: new Date(),
+            },
+          }
+        )
+        summary.sent += 1
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "Failed to send WhatsApp reminder"
+        await logsCol.updateOne(
+          { key },
+          {
+            $set: {
+              status: "failed",
+              error: message,
+              updatedAt: new Date(),
+            },
+          }
+        )
+        summary.failed += 1
+        summary.errors.push(`${reminder.tenantName} (${recipient.role}): ${message}`)
+      }
+    }
+  }
+
+  return summary
+}
+
 export async function GET(req: NextRequest) {
   const auth = isAuthorized(req)
   if (!auth.ok) return auth.response
@@ -57,40 +197,89 @@ export async function GET(req: NextRequest) {
     })
   }
 
-  const recipients = settings.notificationEmails.length
+  const emailRecipients = settings.notificationEmails.length
     ? settings.notificationEmails
     : settings.adminEmails
 
-  if (!recipients.length) {
+  const overdueReminders = await buildOverduePaymentReminders({
+    year,
+    month,
+    paymentDueDate: settings.paymentDueDate,
+  })
+  let whatsappConfig: TwilioWhatsAppConfig | null = null
+  if (overdueReminders.length) {
+    try {
+      whatsappConfig = getTwilioWhatsAppConfig()
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Invalid Twilio WhatsApp configuration"
+      return NextResponse.json({ error: message }, { status: 500 })
+    }
+  }
+
+  if (!emailRecipients.length && !overdueReminders.length) {
     return NextResponse.json({ ok: true, skipped: true, reason: "no_notification_recipients" })
   }
 
   try {
-    const paidReport = await buildPaymentsReport({ state: "approved", year, month })
-    const unpaidReport = await buildPaymentsReport({ state: "pending", year, month })
-    const from = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
+    if (emailRecipients.length) {
+      const paidReport = await buildPaymentsReport({ state: "approved", year, month })
+      const unpaidReport = await buildPaymentsReport({ state: "pending", year, month })
+      const from = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
 
-    await Promise.all([
-      sendPaymentsReportEmail({
-        to: recipients,
-        from,
-        subject: paidReport.subject,
-        filename: paidReport.filename,
-        pdfBytes: paidReport.bytes,
-        filtersLabel: paidReport.filtersLabel,
-      }),
-      sendPaymentsReportEmail({
-        to: recipients,
-        from,
-        subject: unpaidReport.subject,
-        filename: unpaidReport.filename,
-        pdfBytes: unpaidReport.bytes,
-        filtersLabel: unpaidReport.filtersLabel,
-      }),
-    ])
+      await Promise.all([
+        sendPaymentsReportEmail({
+          to: emailRecipients,
+          from,
+          subject: paidReport.subject,
+          filename: paidReport.filename,
+          pdfBytes: paidReport.bytes,
+          filtersLabel: paidReport.filtersLabel,
+        }),
+        sendPaymentsReportEmail({
+          to: emailRecipients,
+          from,
+          subject: unpaidReport.subject,
+          filename: unpaidReport.filename,
+          pdfBytes: unpaidReport.bytes,
+          filtersLabel: unpaidReport.filtersLabel,
+        }),
+      ])
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : "Failed to generate or send reports"
     return NextResponse.json({ error: message }, { status: 500 })
+  }
+
+  let whatsappSummary = {
+    targets: overdueReminders.length,
+    attempted: 0,
+    sent: 0,
+    skippedDuplicate: 0,
+    skippedInvalidPhone: 0,
+    failed: 0,
+    errors: [] as string[],
+  }
+
+  if (whatsappConfig) {
+    whatsappSummary = await sendWhatsAppPaymentReminders({
+      reminders: overdueReminders,
+      config: whatsappConfig,
+    })
+  }
+
+  if (whatsappSummary.failed > 0) {
+    return NextResponse.json(
+      {
+        ok: false,
+        sent: true,
+        month,
+        year,
+        reports: emailRecipients.length ? ["paid", "unpaid"] : [],
+        emailRecipients: emailRecipients.length,
+        whatsapp: whatsappSummary,
+      },
+      { status: 502 }
+    )
   }
 
   return NextResponse.json({
@@ -98,7 +287,8 @@ export async function GET(req: NextRequest) {
     sent: true,
     month,
     year,
-    reports: ["paid", "unpaid"],
-    recipients: recipients.length,
+    reports: emailRecipients.length ? ["paid", "unpaid"] : [],
+    emailRecipients: emailRecipients.length,
+    whatsapp: whatsappSummary,
   })
 }
