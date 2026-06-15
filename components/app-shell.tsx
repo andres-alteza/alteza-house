@@ -8,15 +8,12 @@ import { useI18n } from "@/lib/i18n-context"
 import { Navbar } from "@/components/navbar"
 import { Sidebar } from "@/components/sidebar"
 import { LoginPage } from "@/components/pages/login-page"
+import { DashboardPage } from "@/components/pages/dashboard-page"
 import { cn } from "@/lib/utils"
 import { Toaster } from "sonner"
 
 const PageLoading = () => <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
 
-const DashboardPage = dynamic(
-  () => import("@/components/pages/dashboard-page").then((mod) => mod.DashboardPage),
-  { loading: PageLoading }
-)
 const HousesPage = dynamic(
   () => import("@/components/pages/houses-page").then((mod) => mod.HousesPage),
   { loading: PageLoading }
