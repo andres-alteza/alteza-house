@@ -21,10 +21,8 @@ const mongoCache: MongoCache =
     promise: null,
   } satisfies MongoCache)
 
-// Prevent dev hot-reload connection leaks.
-if (process.env.NODE_ENV !== "production") {
-  globalThis.__mongoCache = mongoCache
-}
+// Reuse connections across hot reloads and warm serverless invocations.
+globalThis.__mongoCache = mongoCache
 
 async function connectClient(): Promise<MongoClient> {
   if (mongoCache.client) return mongoCache.client
@@ -38,7 +36,9 @@ async function connectClient(): Promise<MongoClient> {
     mongoCache.promise = new MongoClient(MONGODB_URI, {
       connectTimeoutMS: 10000,
       serverSelectionTimeoutMS: 10000,
-      maxPoolSize: 10,
+      maxPoolSize: 5,
+      minPoolSize: 0,
+      maxIdleTimeMS: 30000,
     }).connect()
   }
 

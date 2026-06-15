@@ -18,6 +18,28 @@ export const DEFAULT_SETTINGS: Settings = {
   legalRepresentativePhone: "300 789 4833",
 }
 
+const SETTINGS_CACHE_TTL_MS = 30_000
+
+type AppSettingsCache = {
+  value: Settings | null
+  expiresAt: number
+  promise: Promise<Settings> | null
+}
+
+declare global {
+  var __appSettingsCache: AppSettingsCache | undefined
+}
+
+const appSettingsCache: AppSettingsCache =
+  globalThis.__appSettingsCache ??
+  ({
+    value: null,
+    expiresAt: 0,
+    promise: null,
+  } satisfies AppSettingsCache)
+
+globalThis.__appSettingsCache = appSettingsCache
+
 function normalizeEmails(emails: string[]) {
   const normalized = emails.map((e) => e.trim().toLowerCase()).filter(Boolean)
   return Array.from(new Set(normalized))
@@ -37,6 +59,25 @@ type SettingsDoc = {
 }
 
 export async function getAppSettings(): Promise<Settings> {
+  if (appSettingsCache.value && appSettingsCache.expiresAt > Date.now()) {
+    return appSettingsCache.value
+  }
+  if (appSettingsCache.promise) {
+    return appSettingsCache.promise
+  }
+
+  appSettingsCache.promise = loadAppSettings()
+  try {
+    const settings = await appSettingsCache.promise
+    appSettingsCache.value = settings
+    appSettingsCache.expiresAt = Date.now() + SETTINGS_CACHE_TTL_MS
+    return settings
+  } finally {
+    appSettingsCache.promise = null
+  }
+}
+
+async function loadAppSettings(): Promise<Settings> {
   const settingsCol = await getCollection<SettingsDoc>("settings")
   const settings = await settingsCol.findOne({ _id: SETTINGS_ID })
 
@@ -67,5 +108,11 @@ export async function getAppSettings(): Promise<Settings> {
 export async function getAdminEmails(): Promise<string[]> {
   const settings = await getAppSettings()
   return settings.adminEmails
+}
+
+export function invalidateAppSettingsCache() {
+  appSettingsCache.value = null
+  appSettingsCache.expiresAt = 0
+  appSettingsCache.promise = null
 }
 

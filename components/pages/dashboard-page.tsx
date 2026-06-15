@@ -325,19 +325,7 @@ function TenantDashboard({
     setOpeningProofId(paymentId)
     try {
       const data = await api.getPaymentProofUrl(paymentId)
-      const response = await fetch(data.url)
-      if (!response.ok) {
-        throw new Error(`Download failed with status ${response.status}`)
-      }
-      const blob = await response.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = objectUrl
-      anchor.download = `payment-proof-${paymentId}`
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+      window.open(data.url, "_blank", "noopener,noreferrer")
       toast.success(t("general.openedSuccess"))
     } catch (error) {
       console.error("Open payment proof error:", error)

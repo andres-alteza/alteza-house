@@ -1,23 +1,50 @@
 "use client"
 
 import { useState } from "react"
+import dynamic from "next/dynamic"
 import { usePathname, useRouter } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
 import { useI18n } from "@/lib/i18n-context"
 import { Navbar } from "@/components/navbar"
 import { Sidebar } from "@/components/sidebar"
 import { LoginPage } from "@/components/pages/login-page"
-import { DashboardPage } from "@/components/pages/dashboard-page"
-import { HousesPage } from "@/components/pages/houses-page"
-import { TenantsPage } from "@/components/pages/tenants-page"
-import { ContractsPage } from "@/components/pages/contracts-page"
-import { PaymentsPage } from "@/components/pages/payments-page"
-import { ReceiptsPage } from "@/components/pages/receipts-page"
-import { PaymentsReportPage } from "@/components/pages/payments-report-page"
-
-import { SettingsPage } from "@/components/pages/settings-page"
 import { cn } from "@/lib/utils"
 import { Toaster } from "sonner"
+
+const PageLoading = () => <div className="py-8 text-center text-sm text-muted-foreground">Cargando...</div>
+
+const DashboardPage = dynamic(
+  () => import("@/components/pages/dashboard-page").then((mod) => mod.DashboardPage),
+  { loading: PageLoading }
+)
+const HousesPage = dynamic(
+  () => import("@/components/pages/houses-page").then((mod) => mod.HousesPage),
+  { loading: PageLoading }
+)
+const TenantsPage = dynamic(
+  () => import("@/components/pages/tenants-page").then((mod) => mod.TenantsPage),
+  { loading: PageLoading }
+)
+const ContractsPage = dynamic(
+  () => import("@/components/pages/contracts-page").then((mod) => mod.ContractsPage),
+  { loading: PageLoading }
+)
+const PaymentsPage = dynamic(
+  () => import("@/components/pages/payments-page").then((mod) => mod.PaymentsPage),
+  { loading: PageLoading }
+)
+const ReceiptsPage = dynamic(
+  () => import("@/components/pages/receipts-page").then((mod) => mod.ReceiptsPage),
+  { loading: PageLoading }
+)
+const PaymentsReportPage = dynamic(
+  () => import("@/components/pages/payments-report-page").then((mod) => mod.PaymentsReportPage),
+  { loading: PageLoading }
+)
+const SettingsPage = dynamic(
+  () => import("@/components/pages/settings-page").then((mod) => mod.SettingsPage),
+  { loading: PageLoading }
+)
 
 const PAGE_IDS = [
   "dashboard",

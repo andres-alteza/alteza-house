@@ -359,19 +359,7 @@ export function ContractsPage() {
     setDetailError("")
     try {
       const data = await api.getContractPdfUrl(selectedContract.id, kind)
-      const response = await fetch(data.url)
-      if (!response.ok) {
-        throw new Error(`Download failed with status ${response.status}`)
-      }
-      const blob = await response.blob()
-      const objectUrl = URL.createObjectURL(blob)
-      const anchor = document.createElement("a")
-      anchor.href = objectUrl
-      anchor.download = `contract-${selectedContract.id}-${kind}.pdf`
-      document.body.appendChild(anchor)
-      anchor.click()
-      anchor.remove()
-      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1_000)
+      window.open(data.url, "_blank", "noopener,noreferrer")
       toast.success(t("general.openedSuccess"))
     } catch (error) {
       console.error("Open contract file error:", error)

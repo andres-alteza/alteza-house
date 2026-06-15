@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { randomBytes } from "crypto"
 import { getCollection } from "@/lib/mongodb"
 import { withAuth } from "@/lib/api-auth"
-import { DEFAULT_SETTINGS, SETTINGS_ID } from "@/lib/app-settings"
+import { DEFAULT_SETTINGS, SETTINGS_ID, invalidateAppSettingsCache } from "@/lib/app-settings"
 import { parseJson } from "@/lib/api-helpers"
 import { settingsSchema } from "@/lib/schemas/settings"
 import {
@@ -153,6 +153,7 @@ export const PUT = withAuth(
       },
       { upsert: true }
     )
+    invalidateAppSettingsCache()
   } catch (error) {
     for (const uid of createdFirebaseUserUids) {
       try {
