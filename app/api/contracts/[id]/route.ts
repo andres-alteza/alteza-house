@@ -20,9 +20,6 @@ export const PUT = withAuth(
   if (!existing) {
     return NextResponse.json({ error: "Contract not found" }, { status: 404 })
   }
-  if (existing.status === "approved" || existing.status === "finished") {
-    return NextResponse.json({ error: "Approved or finished contracts cannot be modified" }, { status: 400 })
-  }
 
   const tenantId = parsed.data.tenantId ?? existing.tenantId
   const startDate = parsed.data.startDate ?? existing.startDate

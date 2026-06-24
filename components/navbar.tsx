@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import useSWR from "swr"
 import { Menu, Globe, ChevronDown, LogOut, Bell, KeyRound } from "lucide-react"
 import { useAuth } from "@/lib/auth-context"
@@ -13,6 +13,26 @@ import { toast } from "sonner"
 
 interface NavbarProps {
   onToggleSidebar: () => void
+}
+
+function dismissedNotificationsKey(userId: string) {
+  return `dismissed-notifications-${userId}`
+}
+
+function readDismissedIds(userId: string | undefined): string[] {
+  if (!userId || typeof window === "undefined") return []
+  try {
+    const raw = localStorage.getItem(dismissedNotificationsKey(userId))
+    if (!raw) return []
+    const parsed = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed.filter((id): id is string => typeof id === "string") : []
+  } catch {
+    return []
+  }
+}
+
+function writeDismissedIds(userId: string, ids: string[]) {
+  localStorage.setItem(dismissedNotificationsKey(userId), JSON.stringify(ids))
 }
 
 export function Navbar({ onToggleSidebar }: NavbarProps) {
@@ -38,25 +58,88 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
   const adminSignedContracts = contracts.filter(
     (contract) => contract.status === "signed" && !!contract.signedPdfUrl
   )
-  const adminNotifications = isAdmin
-    ? [
-        ...adminSignedContracts.map((contract) => ({
-          id: `contract-${contract.id}`,
-          kind: "contract" as const,
-          contract,
-        })),
-        ...pendingPayments.map((payment) => ({
-          id: `payment-${payment.id}`,
-          kind: "payment" as const,
-          payment,
-        })),
-      ]
-    : []
-  const pendingCount = isAdmin ? adminNotifications.length : tenantContractsReady.length
+  const adminNotifications = useMemo(
+    () =>
+      isAdmin
+        ? [
+            ...adminSignedContracts.map((contract) => ({
+              id: `contract-${contract.id}`,
+              kind: "contract" as const,
+              contract,
+            })),
+            ...pendingPayments.map((payment) => ({
+              id: `payment-${payment.id}`,
+              kind: "payment" as const,
+              payment,
+            })),
+          ]
+        : [],
+    [isAdmin, adminSignedContracts, pendingPayments]
+  )
+  const tenantNotifications = useMemo(
+    () =>
+      tenantContractsReady.map((contract) => ({
+        id: `contract-${contract.id}`,
+        contract,
+      })),
+    [tenantContractsReady]
+  )
+  const activeNotificationIds = useMemo(
+    () =>
+      isAdmin
+        ? adminNotifications.map((notification) => notification.id)
+        : tenantNotifications.map((notification) => notification.id),
+    [isAdmin, adminNotifications, tenantNotifications]
+  )
+  const [dismissedIds, setDismissedIds] = useState<string[]>([])
+  const visibleAdminNotifications = adminNotifications.filter(
+    (notification) => !dismissedIds.includes(notification.id)
+  )
+  const visibleTenantNotifications = tenantNotifications.filter(
+    (notification) => !dismissedIds.includes(notification.id)
+  )
+  const pendingCount = isAdmin
+    ? visibleAdminNotifications.length
+    : visibleTenantNotifications.length
   const [loggingOut, setLoggingOut] = useState(false)
   const [resettingPassword, setResettingPassword] = useState(false)
 
-  const navigateToNotification = (path: string) => {
+  useEffect(() => {
+    if (!user?.id) {
+      setDismissedIds([])
+      return
+    }
+    setDismissedIds(readDismissedIds(user.id))
+  }, [user?.id])
+
+  useEffect(() => {
+    if (!user?.id) return
+    setDismissedIds((previous) => {
+      if (activeNotificationIds.length === 0) {
+        if (previous.length === 0) return previous
+        writeDismissedIds(user.id, [])
+        return []
+      }
+      const activeSet = new Set(activeNotificationIds)
+      const pruned = previous.filter((id) => activeSet.has(id))
+      if (pruned.length === previous.length) return previous
+      writeDismissedIds(user.id, pruned)
+      return pruned
+    })
+  }, [user?.id, activeNotificationIds])
+
+  const dismissNotification = (id: string) => {
+    if (!user?.id) return
+    setDismissedIds((previous) => {
+      if (previous.includes(id)) return previous
+      const next = [...previous, id]
+      writeDismissedIds(user.id, next)
+      return next
+    })
+  }
+
+  const navigateToNotification = (id: string, path: string) => {
+    dismissNotification(id)
     router.push(path)
   }
 
@@ -138,35 +221,20 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                 sideOffset={8}
                 className="z-50 w-[calc(100vw-1rem)] max-w-80 rounded-lg border border-border bg-card p-2 text-card-foreground shadow-lg"
               >
-                <div className="px-2 py-1.5">
-                  <p className="text-sm font-semibold">
-                    {isAdmin
-                      ? t("notifications.pendingApprovals")
-                      : t("notifications.contractsReadyToSign")}
-                  </p>
-                  <p className="text-xs text-muted-foreground">
-                    {pendingCount === 0
-                      ? isAdmin
-                        ? t("notifications.noPendingApprovals")
-                        : t("notifications.noContractsReadyToSign")
-                      : isAdmin
-                        ? t("notifications.pendingApprovalsDescription")
-                        : t("notifications.contractsReadyToSignDescription")}
-                  </p>
-                </div>
-                <DropdownMenu.Separator className="my-1 h-px bg-border" />
                 <div className="max-h-72 overflow-y-auto">
                   {pendingCount === 0 ? (
                     <div className="px-2 py-3 text-sm text-muted-foreground">{t("general.noData")}</div>
                   ) : (
-                    (isAdmin ? adminNotifications.slice(0, 6) : tenantContractsReady.slice(0, 6)).map(
-                      (item) =>
+                    (isAdmin ? visibleAdminNotifications : visibleTenantNotifications)
+                      .slice(0, 6)
+                      .map((item) =>
                         isAdmin ? (
                           item.kind === "contract" ? (
                             <DropdownMenu.Item
                               key={item.id}
                               onSelect={() =>
                                 navigateToNotification(
+                                  item.id,
                                   `/contracts?contractId=${item.contract.id}`
                                 )
                               }
@@ -185,6 +253,7 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                               key={item.id}
                               onSelect={() =>
                                 navigateToNotification(
+                                  item.id,
                                   `/payments?paymentId=${item.payment.id}`
                                 )
                               }
@@ -201,10 +270,11 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                           )
                         ) : (
                           <DropdownMenu.Item
-                            key={(item as Contract).id}
+                            key={item.id}
                             onSelect={() =>
                               navigateToNotification(
-                                `/contracts?contractId=${(item as Contract).id}`
+                                item.id,
+                                `/contracts?contractId=${item.contract.id}`
                               )
                             }
                             className="flex cursor-pointer flex-col gap-0.5 rounded-md px-2 py-2 text-left text-sm outline-none transition-colors hover:bg-muted focus:bg-muted"
@@ -213,11 +283,11 @@ export function Navbar({ onToggleSidebar }: NavbarProps) {
                               {t("contracts.status.readyToSign")}
                             </p>
                             <p className="text-xs text-muted-foreground">
-                              {(item as Contract).startDate} - {(item as Contract).endDate}
+                              {item.contract.startDate} - {item.contract.endDate}
                             </p>
                           </DropdownMenu.Item>
                         )
-                    )
+                      )
                   )}
                 </div>
               </DropdownMenu.Content>

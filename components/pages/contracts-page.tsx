@@ -155,9 +155,13 @@ export function ContractsPage() {
     setIsDetailOpen(true)
   }
 
-  const isContractLocked = (contract: Contract) =>
+  const isContractDeleteLocked = (contract: Contract) =>
     contract.status === "approved" || contract.status === "finished"
-  const canDeleteContract = (contract: Contract) => isAdmin && !isContractLocked(contract)
+  const canAdminEditContract = (_contract: Contract) => isAdmin
+  const canAdminUploadDraft = (_contract: Contract) => isAdmin
+  const canDeleteContract = (contract: Contract) => isAdmin && !isContractDeleteLocked(contract)
+  const canTenantUploadSigned = (contract: Contract) =>
+    !isAdmin && contract.status === "ready_to_sign"
 
   const openViewDetail = (contract: Contract) => openDetail(contract, "view")
 
@@ -168,8 +172,7 @@ export function ContractsPage() {
     }
     const target = contracts.find((contract) => contract.id === contractIdParam)
     if (target) {
-      const locked = target.status === "approved" || target.status === "finished"
-      const mode = !isAdmin || locked ? "view" : "edit"
+      const mode = isAdmin ? "edit" : "view"
       openDetail(target, mode)
       setAutoOpenedContractId(contractIdParam)
       router.replace("/contracts")
@@ -179,11 +182,7 @@ export function ContractsPage() {
   }, [searchParams, contracts, autoOpenedContractId, isAdmin])
 
   const openEditDetail = (contract: Contract) => {
-    if (isContractLocked(contract)) {
-      openDetail(contract, "view")
-      return
-    }
-    openDetail(contract, "edit")
+    openDetail(contract, isAdmin ? "edit" : "view")
   }
 
   const refreshContracts = async (contractId?: string) => {
@@ -256,12 +255,7 @@ export function ContractsPage() {
   }
 
   const updateContract = async () => {
-    if (
-      !selectedContract ||
-      !isAdmin ||
-      detailMode !== "edit" ||
-      isContractLocked(selectedContract)
-    ) {
+    if (!selectedContract || !canAdminEditContract(selectedContract) || detailMode !== "edit") {
       return
     }
     setDetailSaving(true)
@@ -512,12 +506,10 @@ export function ContractsPage() {
           columns={columns}
           data={filteredContracts}
           onView={(contract) =>
-            isContractLocked(contract) || !isAdmin
-              ? openViewDetail(contract)
-              : openEditDetail(contract)
+            isAdmin ? openEditDetail(contract) : openViewDetail(contract)
           }
           actions={(contract) => {
-            if (isContractLocked(contract)) return null
+            if (isContractDeleteLocked(contract)) return null
             return (
               <div className="flex items-center gap-1">
                 {isAdmin && contract.status === "signed" && (
@@ -678,7 +670,7 @@ export function ContractsPage() {
       >
         {selectedContract && (
           <div className="flex flex-col gap-4">
-            {isAdmin && detailMode === "edit" && !isContractLocked(selectedContract) ? (
+            {isAdmin && detailMode === "edit" && canAdminEditContract(selectedContract) ? (
               <div className="flex flex-col gap-4 rounded-lg border border-border bg-muted/30 p-3">
                 <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
                   <div className="flex flex-col gap-1.5">
@@ -766,6 +758,7 @@ export function ContractsPage() {
                     <option value="ready_to_sign">{t("contracts.status.readyToSign")}</option>
                     <option value="signed">{t("contracts.status.signed")}</option>
                     <option value="approved">{t("contracts.status.approved")}</option>
+                    <option value="finished">{t("contracts.status.finished")}</option>
                   </select>
                 </div>
                 <div className="flex border-t border-border pt-4 sm:justify-end">
@@ -804,7 +797,7 @@ export function ContractsPage() {
               </div>
             )}
             {detailError && <p className="text-sm text-destructive">{detailError}</p>}
-            {isAdmin && !isContractLocked(selectedContract) && (
+            {canAdminUploadDraft(selectedContract) && (
               <input
                 ref={draftInputRef}
                 type="file"
@@ -813,88 +806,70 @@ export function ContractsPage() {
                 className="hidden"
               />
             )}
-            {!isAdmin && selectedContract.status === "ready_to_sign" && !isContractLocked(selectedContract) && (
-              <>
-                <input
-                  ref={signedInputRef}
-                  type="file"
-                  accept=".pdf,application/pdf"
-                  onChange={handleSignedFileChange}
-                  className="hidden"
-                />
-              </>
+            {canTenantUploadSigned(selectedContract) && (
+              <input
+                ref={signedInputRef}
+                type="file"
+                accept=".pdf,application/pdf"
+                onChange={handleSignedFileChange}
+                className="hidden"
+              />
             )}
-            {selectedContract.status === "approved" || selectedContract.status === "finished" ? (
-              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-                {!!selectedContract.signedPdfUrl && (
-                  <button
-                    type="button"
-                    onClick={() => openContractFile("signed")}
-                    disabled={openingSigned || finishing}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <Download className="h-4 w-4" />
-                    {openingSigned ? t("general.loading") : t("contracts.downloadSigned")}
-                  </button>
-                )}
-                {isAdmin && selectedContract.status === "approved" && (
-                  <button
-                    type="button"
-                    onClick={() => setConfirmingFinish(true)}
-                    disabled={finishing}
-                    className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-                  >
-                    <CheckCircle className="h-4 w-4" />
-                    {finishing ? t("general.loading") : t("contracts.finishContract")}
-                  </button>
-                )}
-              </div>
-            ) : (
-              <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
-                {isAdmin && !isContractLocked(selectedContract) && (
-                  <button
-                    type="button"
-                    onClick={() => draftInputRef.current?.click()}
-                    disabled={uploadingDraft}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <Upload className="h-4 w-4" />
-                    {uploadingDraft ? t("general.loading") : t("contracts.uploadDraft")}
-                  </button>
-                )}
+            <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
+              {canAdminUploadDraft(selectedContract) && (
                 <button
                   type="button"
-                  onClick={() => openContractFile("draft")}
-                  disabled={!selectedContract.pdfUrl || openingDraft}
-                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90"
+                  onClick={() => draftInputRef.current?.click()}
+                  disabled={uploadingDraft}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadingDraft ? t("general.loading") : t("contracts.uploadDraft")}
+                </button>
+              )}
+              <button
+                type="button"
+                onClick={() => openContractFile("draft")}
+                disabled={!selectedContract.pdfUrl || openingDraft}
+                className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {openingDraft ? t("general.loading") : t("contracts.downloadDraft")}
+              </button>
+              {!!selectedContract.signedPdfUrl && (
+                <button
+                  type="button"
+                  onClick={() => openContractFile("signed")}
+                  disabled={openingSigned || finishing}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-                  {openingDraft ? t("general.loading") : t("contracts.downloadDraft")}
+                  {openingSigned ? t("general.loading") : t("contracts.downloadSigned")}
                 </button>
-                {!!selectedContract.signedPdfUrl && (
-                  <button
-                    type="button"
-                    onClick={() => openContractFile("signed")}
-                    disabled={openingSigned}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted"
-                  >
-                    <Download className="h-4 w-4" />
-                    {openingSigned ? t("general.loading") : t("contracts.downloadSigned")}
-                  </button>
-                )}
-                {!isAdmin && selectedContract.status === "ready_to_sign" && !isContractLocked(selectedContract) && (
-                  <button
-                    type="button"
-                    onClick={() => signedInputRef.current?.click()}
-                    disabled={uploadingSigned}
-                    className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                  >
-                    <Upload className="h-4 w-4" />
-                    {uploadingSigned ? t("general.loading") : t("contracts.uploadSigned")}
-                  </button>
-                )}
-              </div>
-            )}
+              )}
+              {canTenantUploadSigned(selectedContract) && (
+                <button
+                  type="button"
+                  onClick={() => signedInputRef.current?.click()}
+                  disabled={uploadingSigned}
+                  className="inline-flex items-center gap-2 rounded-lg border border-border px-4 py-2 text-sm font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                >
+                  <Upload className="h-4 w-4" />
+                  {uploadingSigned ? t("general.loading") : t("contracts.uploadSigned")}
+                </button>
+              )}
+              {isAdmin && selectedContract.status === "approved" && (
+                <button
+                  type="button"
+                  onClick={() => setConfirmingFinish(true)}
+                  disabled={finishing}
+                  className="inline-flex items-center gap-2 rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
+                  <CheckCircle className="h-4 w-4" />
+                  {finishing ? t("general.loading") : t("contracts.finishContract")}
+                </button>
+              )}
+            </div>
           </div>
         )}
       </Modal>

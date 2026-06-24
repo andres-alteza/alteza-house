@@ -67,7 +67,7 @@ export const POST = withAuth(async (req: NextRequest, user) => {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
   }
-  if (contract.status === "approved" || contract.status === "finished") {
+  if (user.role !== "admin" && (contract.status === "approved" || contract.status === "finished")) {
     return badRequest("Approved or finished contracts cannot be modified")
   }
   if (kind === "signed" && contract.status !== "ready_to_sign") {
