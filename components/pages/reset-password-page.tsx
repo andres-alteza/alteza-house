@@ -3,11 +3,16 @@
 import { useEffect, useMemo, useState } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { CheckCircle, Eye, EyeOff, Globe, KeyRound } from "lucide-react"
+import { useAuth } from "@/lib/auth-context"
 import { auth, confirmPasswordReset, verifyPasswordResetCode } from "@/lib/firebase"
 import { useI18n } from "@/lib/i18n-context"
 
+function isInvalidOrExpiredCode(code: string) {
+  return code === "auth/expired-action-code" || code === "auth/invalid-action-code"
+}
+
 function mapResetCodeError(code: string, fallback: string, invalidLink: string) {
-  if (code === "auth/expired-action-code" || code === "auth/invalid-action-code") {
+  if (isInvalidOrExpiredCode(code)) {
     return invalidLink
   }
   return fallback
@@ -16,14 +21,19 @@ function mapResetCodeError(code: string, fallback: string, invalidLink: string) 
 export function ResetPasswordPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
+  const { sendPasswordReset } = useAuth()
   const { t, locale, setLocale } = useI18n()
   const [password, setPassword] = useState("")
   const [confirmPassword, setConfirmPassword] = useState("")
   const [email, setEmail] = useState("")
+  const [resendEmail, setResendEmail] = useState("")
   const [verifying, setVerifying] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [resending, setResending] = useState(false)
   const [success, setSuccess] = useState(false)
+  const [resendSuccess, setResendSuccess] = useState("")
   const [error, setError] = useState("")
+  const [linkInvalid, setLinkInvalid] = useState(false)
   const [showPassword, setShowPassword] = useState(false)
   const [showConfirmPassword, setShowConfirmPassword] = useState(false)
 
@@ -36,26 +46,34 @@ export function ResetPasswordPage() {
     async function validateCode() {
       if (!oobCode || mode !== "resetPassword") {
         setError(t("auth.resetLinkInvalid"))
+        setLinkInvalid(true)
         setVerifying(false)
         return
       }
 
       setVerifying(true)
       setError("")
+      setLinkInvalid(false)
+      setResendSuccess("")
 
       try {
         const resolvedEmail = await verifyPasswordResetCode(auth, oobCode)
         if (!active) return
         setEmail(resolvedEmail)
+        setResendEmail(resolvedEmail)
       } catch (err: any) {
         if (!active) return
+        const code = err?.code || ""
         setError(
           mapResetCodeError(
-            err?.code || "",
+            code,
             t("auth.resetLinkCheckFailed"),
             t("auth.resetLinkInvalid"),
           ),
         )
+        if (isInvalidOrExpiredCode(code) || !oobCode || mode !== "resetPassword") {
+          setLinkInvalid(true)
+        }
       } finally {
         if (active) {
           setVerifying(false)
@@ -70,11 +88,45 @@ export function ResetPasswordPage() {
     }
   }, [mode, oobCode, t])
 
+  const handleResendLink = async () => {
+    const trimmedEmail = resendEmail.trim()
+    setResendSuccess("")
+    setError("")
+
+    if (!trimmedEmail) {
+      setError(t("auth.enterEmail"))
+      return
+    }
+
+    setResending(true)
+    try {
+      await sendPasswordReset(trimmedEmail)
+      setResendSuccess(t("auth.resetEmailSent"))
+      setLinkInvalid(true)
+    } catch (err: any) {
+      const code = err?.code || ""
+      // For security, do not reveal whether a user exists.
+      if (code === "auth/user-not-found") {
+        setResendSuccess(t("auth.resetEmailSent"))
+        setLinkInvalid(true)
+      } else if (code === "auth/invalid-email") {
+        setError(t("auth.invalidEmail"))
+      } else if (code === "auth/too-many-requests") {
+        setError(t("auth.tooManyRequests"))
+      } else {
+        setError(t("auth.resetEmailFailed"))
+      }
+    } finally {
+      setResending(false)
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault()
 
     if (!oobCode) {
       setError(t("auth.resetLinkInvalid"))
+      setLinkInvalid(true)
       return
     }
 
@@ -90,6 +142,7 @@ export function ResetPasswordPage() {
 
     setSubmitting(true)
     setError("")
+    setResendSuccess("")
 
     try {
       await confirmPasswordReset(auth, oobCode, password)
@@ -106,11 +159,17 @@ export function ResetPasswordPage() {
             t("auth.resetLinkInvalid"),
           ),
         )
+        if (isInvalidOrExpiredCode(code)) {
+          setLinkInvalid(true)
+          if (email) setResendEmail(email)
+        }
       }
     } finally {
       setSubmitting(false)
     }
   }
+
+  const showResendForm = !verifying && !success && (linkInvalid || !email)
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-linear-to-br from-[#5e35b1] via-[#7c4ddb] to-[#9c6fef] px-4 py-12 sm:px-6">
@@ -139,7 +198,11 @@ export function ResetPasswordPage() {
               {success ? t("auth.resetPasswordSuccessTitle") : t("auth.resetPasswordTitle")}
             </h1>
             <p className="mt-1 text-sm text-muted-foreground">
-              {success ? t("auth.resetPasswordSuccess") : t("auth.resetPasswordSubtitle")}
+              {success
+                ? t("auth.resetPasswordSuccess")
+                : showResendForm
+                  ? t("auth.resetLinkExpiredHint")
+                  : t("auth.resetPasswordSubtitle")}
             </p>
           </div>
 
@@ -156,6 +219,53 @@ export function ResetPasswordPage() {
             >
               {t("auth.goToLogin")}
             </button>
+          ) : showResendForm ? (
+            <div className="flex flex-col gap-4">
+              {error && (
+                <div className="rounded-lg bg-destructive/10 px-4 py-3 text-sm text-destructive">
+                  {error}
+                </div>
+              )}
+
+              {resendSuccess && (
+                <div className="rounded-lg bg-emerald-500/10 px-4 py-3 text-sm text-emerald-700">
+                  {resendSuccess}
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="resend-email" className="text-sm font-medium text-card-foreground">
+                  {t("auth.email")} <span className="text-destructive">*</span>
+                </label>
+                <input
+                  id="resend-email"
+                  type="email"
+                  value={resendEmail}
+                  onChange={(e) => setResendEmail(e.target.value)}
+                  required
+                  autoComplete="email"
+                  placeholder="correo@ejemplo.com"
+                  className="w-full rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                />
+              </div>
+
+              <button
+                type="button"
+                onClick={() => void handleResendLink()}
+                disabled={resending}
+                className="inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+              >
+                {resending ? t("general.loading") : t("auth.sendNewResetLink")}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => router.push("/")}
+                className="text-xs text-muted-foreground transition-colors hover:text-primary"
+              >
+                {t("auth.backToLogin")}
+              </button>
+            </div>
           ) : (
             <>
               {error && (
@@ -164,96 +274,84 @@ export function ResetPasswordPage() {
                 </div>
               )}
 
-              {email ? (
-                <>
-                  <div className="mb-4 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
-                    {t("auth.resetPasswordFor")}{" "}
-                    <span className="font-semibold text-card-foreground">{email}</span>
-                  </div>
+              <div className="mb-4 rounded-lg bg-muted px-4 py-3 text-sm text-muted-foreground">
+                {t("auth.resetPasswordFor")}{" "}
+                <span className="font-semibold text-card-foreground">{email}</span>
+              </div>
 
-                  <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor="password" className="text-sm font-medium text-card-foreground">
-                        {t("auth.newPassword")} <span className="text-destructive">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          id="password"
-                          type={showPassword ? "text" : "password"}
-                          value={password}
-                          onChange={(e) => setPassword(e.target.value)}
-                          required
-                          minLength={6}
-                          placeholder="********"
-                          className="w-full rounded-lg border border-input bg-card px-4 py-2.5 pr-10 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowPassword((prev) => !prev)}
-                          aria-label={showPassword ? "Hide password" : "Show password"}
-                          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-card-foreground"
-                        >
-                          {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-1.5">
-                      <label htmlFor="confirm-password" className="text-sm font-medium text-card-foreground">
-                        {t("auth.confirmPassword")} <span className="text-destructive">*</span>
-                      </label>
-                      <div className="relative">
-                        <input
-                          id="confirm-password"
-                          type={showConfirmPassword ? "text" : "password"}
-                          value={confirmPassword}
-                          onChange={(e) => setConfirmPassword(e.target.value)}
-                          required
-                          minLength={6}
-                          placeholder="********"
-                          className="w-full rounded-lg border border-input bg-card px-4 py-2.5 pr-10 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => setShowConfirmPassword((prev) => !prev)}
-                          aria-label={showConfirmPassword ? "Hide password" : "Show password"}
-                          className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-card-foreground"
-                        >
-                          {showConfirmPassword ? (
-                            <EyeOff className="h-4 w-4" />
-                          ) : (
-                            <Eye className="h-4 w-4" />
-                          )}
-                        </button>
-                      </div>
-                    </div>
-
-                    <button
-                      type="submit"
-                      disabled={submitting}
-                      className="mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
-                    >
-                      {submitting ? t("general.loading") : t("auth.updatePassword")}
-                    </button>
-
+              <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="password" className="text-sm font-medium text-card-foreground">
+                    {t("auth.newPassword")} <span className="text-destructive">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="password"
+                      type={showPassword ? "text" : "password"}
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      placeholder="********"
+                      className="w-full rounded-lg border border-input bg-card px-4 py-2.5 pr-10 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                    />
                     <button
                       type="button"
-                      onClick={() => router.push("/")}
-                      className="text-xs text-muted-foreground transition-colors hover:text-primary"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-card-foreground"
                     >
-                      {t("auth.backToLogin")}
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                     </button>
-                  </form>
-                </>
-              ) : (
+                  </div>
+                </div>
+
+                <div className="flex flex-col gap-1.5">
+                  <label htmlFor="confirm-password" className="text-sm font-medium text-card-foreground">
+                    {t("auth.confirmPassword")} <span className="text-destructive">*</span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="confirm-password"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      required
+                      minLength={6}
+                      placeholder="********"
+                      className="w-full rounded-lg border border-input bg-card px-4 py-2.5 pr-10 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((prev) => !prev)}
+                      aria-label={showConfirmPassword ? "Hide password" : "Show password"}
+                      className="absolute inset-y-0 right-0 flex items-center px-3 text-muted-foreground transition-colors hover:text-card-foreground"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="mt-2 inline-flex items-center justify-center gap-2 rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90 disabled:opacity-50"
+                >
+                  {submitting ? t("general.loading") : t("auth.updatePassword")}
+                </button>
+
                 <button
                   type="button"
                   onClick={() => router.push("/")}
-                  className="inline-flex w-full items-center justify-center rounded-lg bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-colors hover:bg-primary/90"
+                  className="text-xs text-muted-foreground transition-colors hover:text-primary"
                 >
                   {t("auth.backToLogin")}
                 </button>
-              )}
+              </form>
             </>
           )}
         </div>
