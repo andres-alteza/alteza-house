@@ -5,6 +5,7 @@ import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { badRequest, parseJson } from "@/lib/api-helpers"
 import { updatePaymentSchema } from "@/lib/schemas/payment"
 import { serializePayment } from "@/lib/serializers/payment"
+import { toStoredProofAttachments } from "@/lib/payment-proofs"
 
 type PaymentDoc = {
   _id: import("mongodb").ObjectId
@@ -17,6 +18,7 @@ type PaymentDoc = {
   year: number
   amount: number
   state: "pending" | "approved"
+  proofAttachments?: unknown
   proofImageUrl?: string
   receiptUrl?: string
   createdAt: Date | string
@@ -30,7 +32,7 @@ export const PATCH = withAuth(async (req: NextRequest, user, { params }: { param
 
   const bodyParsed = await parseJson(req, updatePaymentSchema)
   if ("error" in bodyParsed) return bodyParsed.error
-  const { state, receiptUrl, month, year, proofImageUrl } = bodyParsed.data
+  const { state, receiptUrl, month, year, proofAttachments } = bodyParsed.data
 
   const col = await getCollection<PaymentDoc>("payments")
   const existing = await col.findOne({ _id: idParsed.value })
@@ -53,7 +55,7 @@ export const PATCH = withAuth(async (req: NextRequest, user, { params }: { param
   }
 
   const isChangingEditableFields =
-    month !== undefined || year !== undefined || proofImageUrl !== undefined
+    month !== undefined || year !== undefined || proofAttachments !== undefined
   if (existing.state === "approved" && isChangingEditableFields) {
     return badRequest("Approved payments cannot be modified")
   }
@@ -81,7 +83,11 @@ export const PATCH = withAuth(async (req: NextRequest, user, { params }: { param
   }
   if (month !== undefined) updateFields.month = month
   if (year !== undefined) updateFields.year = year
-  if (proofImageUrl !== undefined) updateFields.proofImageUrl = proofImageUrl
+  if (proofAttachments !== undefined) {
+    const storedAttachments = toStoredProofAttachments(proofAttachments)
+    updateFields.proofAttachments = storedAttachments
+    updateFields.proofImageUrl = storedAttachments[0]?.objectKey ?? ""
+  }
 
   const updated = await col.findOneAndUpdate(
     { _id: idParsed.value },

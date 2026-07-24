@@ -320,11 +320,11 @@ function TenantDashboard({
 
   const greetingName = (user?.name?.trim().split(" ")[0] || user?.email || "").trim()
 
-  const openProofFile = async (paymentId: string) => {
+  const openProofFile = async (paymentId: string, objectKey?: string) => {
     if (openingProofId) return
     setOpeningProofId(paymentId)
     try {
-      const data = await api.getPaymentProofUrl(paymentId)
+      const data = await api.getPaymentProofUrl(paymentId, objectKey)
       window.open(data.url, "_blank", "noopener,noreferrer")
       toast.success(t("general.openedSuccess"))
     } catch (error) {
@@ -461,8 +461,16 @@ function TenantDashboard({
                         <td className="px-5 py-3">
                           <button
                             type="button"
-                            onClick={() => void openProofFile(payment.id)}
-                            disabled={!payment.proofImageUrl || openingProofId === payment.id}
+                            onClick={() =>
+                              void openProofFile(
+                                payment.id,
+                                payment.proofAttachments[0]?.objectKey
+                              )
+                            }
+                            disabled={
+                              payment.proofAttachments.length === 0 ||
+                              openingProofId === payment.id
+                            }
                             className="inline-flex items-center gap-1 rounded-md border border-border px-2.5 py-1 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
                           >
                             {openingProofId === payment.id ? (

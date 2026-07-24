@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server"
 import { getCollection } from "@/lib/mongodb"
 import { withAuth } from "@/lib/api-auth"
-import { parseJson, parseQuery } from "@/lib/api-helpers"
+import { badRequest, parseJson, parseQuery } from "@/lib/api-helpers"
 import { createPaymentSchema, paymentsQuerySchema } from "@/lib/schemas/payment"
 import { serializePayment } from "@/lib/serializers/payment"
+import { toStoredProofAttachments } from "@/lib/payment-proofs"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 
 type TenantDoc = {
@@ -52,8 +53,17 @@ export const GET = withAuth(async (req: NextRequest, user) => {
 export const POST = withAuth(async (req: NextRequest, user) => {
   const parsed = await parseJson(req, createPaymentSchema)
   if ("error" in parsed) return parsed.error
-  const { tenantId, tenantName, tenantEmail, contractId, houseName, month, year, amount, proofImageUrl } =
-    parsed.data
+  const {
+    tenantId,
+    tenantName,
+    tenantEmail,
+    contractId,
+    houseName,
+    month,
+    year,
+    amount,
+    proofAttachments,
+  } = parsed.data
 
   if (user.role === "tenant") {
     const tenantIdParsed = parseObjectIdParam(tenantId)
@@ -89,7 +99,13 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   }
 
   const col = await getCollection("payments")
+  const existingForMonth = await col.findOne({ contractId, month, year })
+  if (existingForMonth) {
+    return badRequest("A payment for this month already exists")
+  }
+
   const createdAt = new Date()
+  const storedAttachments = toStoredProofAttachments(proofAttachments)
   const result = await col.insertOne({
     tenantId,
     tenantName,
@@ -100,14 +116,15 @@ export const POST = withAuth(async (req: NextRequest, user) => {
     year,
     amount,
     state: "pending",
-    proofImageUrl: proofImageUrl || "",
+    proofAttachments: storedAttachments,
+    proofImageUrl: storedAttachments[0]?.objectKey ?? "",
     receiptUrl: "",
     createdAt,
   })
 
   return NextResponse.json(
-    {
-      id: result.insertedId.toString(),
+    serializePayment({
+      _id: result.insertedId,
       tenantId,
       tenantName,
       tenantEmail,
@@ -117,10 +134,10 @@ export const POST = withAuth(async (req: NextRequest, user) => {
       year,
       amount,
       state: "pending",
-      proofImageUrl: proofImageUrl || "",
+      proofAttachments: storedAttachments,
       receiptUrl: "",
-      createdAt: createdAt.toISOString(),
-    },
+      createdAt,
+    }),
     { status: 201 }
   )
 })

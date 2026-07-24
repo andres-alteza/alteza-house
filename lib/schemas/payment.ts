@@ -2,6 +2,13 @@ import { z } from "zod"
 
 export const paymentStateSchema = z.enum(["pending", "approved"])
 
+export const paymentProofAttachmentSchema = z.object({
+  objectKey: z.string().trim().min(1, "Proof object key is required"),
+  filename: z.string().trim().min(1, "Proof filename is required"),
+  contentType: z.string().trim().min(1, "Proof content type is required"),
+  uploadedAt: z.string().trim().optional(),
+})
+
 export const createPaymentSchema = z.object({
   tenantId: z.string().trim().min(1, "Tenant is required"),
   tenantName: z.string().trim().min(1, "Tenant name is required"),
@@ -11,7 +18,9 @@ export const createPaymentSchema = z.object({
   month: z.coerce.number().int().min(1).max(12),
   year: z.coerce.number().int().min(2000).max(3000),
   amount: z.coerce.number().finite().positive("Amount must be > 0"),
-  proofImageUrl: z.string().trim().default(""),
+  proofAttachments: z
+    .array(paymentProofAttachmentSchema)
+    .min(1, "At least one proof attachment is required"),
 })
 
 export const updatePaymentSchema = z.object({
@@ -19,7 +28,10 @@ export const updatePaymentSchema = z.object({
   receiptUrl: z.string().trim().optional(),
   month: z.coerce.number().int().min(1).max(12).optional(),
   year: z.coerce.number().int().min(2000).max(3000).optional(),
-  proofImageUrl: z.string().trim().optional(),
+  proofAttachments: z
+    .array(paymentProofAttachmentSchema)
+    .min(1, "At least one proof attachment is required")
+    .optional(),
 })
 
 export const paymentsQuerySchema = z.object({
@@ -43,4 +55,3 @@ export const paymentsQuerySchema = z.object({
     }),
   state: paymentStateSchema.optional(),
 })
-

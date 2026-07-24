@@ -6,11 +6,11 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
-import type { Contract, House, Payment, Tenant } from "@/lib/types"
+import type { Contract, House, Payment, PaymentProofAttachment, Tenant } from "@/lib/types"
 import { DataTable } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
-import { CheckCircle, ImageIcon, Upload, Download, ChevronDown, Save, Loader2 } from "lucide-react"
+import { CheckCircle, FileText, Upload, Download, ChevronDown, Save, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
 
 const PDF_CONTENT_TYPE = "application/pdf"
@@ -72,6 +72,51 @@ function toLocalIsoDate(date: Date) {
   return localTime.toISOString().slice(0, 10)
 }
 
+async function uploadProofFiles(params: {
+  files: File[]
+  tenantId: string
+  paymentId: string
+  year: number
+  month: number
+}): Promise<PaymentProofAttachment[]> {
+  const uploaded: PaymentProofAttachment[] = []
+
+  for (const file of params.files) {
+    const contentType = file.type || inferContentTypeFromFileName(file.name)
+    if (!contentType) {
+      throw new Error("invalid-proof")
+    }
+
+    const presign = await api.presignPaymentProofUpload({
+      filename: file.name,
+      contentType,
+      tenantId: params.tenantId,
+      paymentId: params.paymentId,
+      year: params.year,
+      month: params.month,
+    })
+
+    const uploadResponse = await fetch(presign.uploadUrl, {
+      method: "PUT",
+      headers: { "Content-Type": presign.contentType },
+      body: file,
+    })
+
+    if (!uploadResponse.ok) {
+      throw new Error(`Upload failed with status ${uploadResponse.status}`)
+    }
+
+    uploaded.push({
+      objectKey: presign.objectKey,
+      filename: file.name,
+      contentType: presign.contentType,
+      uploadedAt: new Date().toISOString(),
+    })
+  }
+
+  return uploaded
+}
+
 export function PaymentsPage() {
   const { t } = useI18n()
   const { isAdmin } = useAuth()
@@ -85,18 +130,19 @@ export function PaymentsPage() {
   const [isDetailOpen, setIsDetailOpen] = useState(false)
   const [isUploadOpen, setIsUploadOpen] = useState(false)
   const [selectedPayment, setSelectedPayment] = useState<Payment | null>(null)
+  const [draftAttachments, setDraftAttachments] = useState<PaymentProofAttachment[]>([])
   const [filterTenant, setFilterTenant] = useState("")
   const [filterHouse, setFilterHouse] = useState("")
   const [filterMonth, setFilterMonth] = useState("")
   const [filterYear, setFilterYear] = useState("")
   const [showFilters, setShowFilters] = useState(false)
-  const [proofFile, setProofFile] = useState<File | null>(null)
-  const [detailProofFile, setDetailProofFile] = useState<File | null>(null)
+  const [proofFiles, setProofFiles] = useState<File[]>([])
+  const [detailProofFiles, setDetailProofFiles] = useState<File[]>([])
   const [uploadError, setUploadError] = useState("")
   const [detailError, setDetailError] = useState("")
   const [uploading, setUploading] = useState(false)
   const [savingDetail, setSavingDetail] = useState(false)
-  const [openingProof, setOpeningProof] = useState(false)
+  const [openingProofKey, setOpeningProofKey] = useState<string | null>(null)
   const [openingReceipt, setOpeningReceipt] = useState(false)
   const [confirmingPaymentId, setConfirmingPaymentId] = useState<string | null>(null)
   const [autoOpenedPaymentId, setAutoOpenedPaymentId] = useState<string | null>(null)
@@ -134,18 +180,6 @@ export function PaymentsPage() {
   const contractWindow = activeTenantContract
     ? buildContractWindow(activeTenantContract, now)
     : null
-  const approvedMonthsForCurrentYear = !isAdmin && activeTenantContract && contractWindow
-    ? new Set(
-        payments
-          .filter(
-            (payment) =>
-              payment.contractId === activeTenantContract.id &&
-              payment.year === contractWindow.year &&
-              payment.state === "approved"
-          )
-          .map((payment) => payment.month)
-      )
-    : new Set<number>()
   const currentMonth = now.getMonth() + 1
   const currentYear = now.getFullYear()
   const isCurrentMonthInContractWindow =
@@ -153,8 +187,16 @@ export function PaymentsPage() {
     currentYear === contractWindow.year &&
     currentMonth >= contractWindow.startMonth &&
     currentMonth <= contractWindow.endMonth
-  const isCurrentMonthApproved =
-    isCurrentMonthInContractWindow && approvedMonthsForCurrentYear.has(currentMonth)
+  const existingPaymentForCurrentMonth =
+    !isAdmin && activeTenantContract && isCurrentMonthInContractWindow
+      ? payments.find(
+          (payment) =>
+            payment.contractId === activeTenantContract.id &&
+            payment.year === currentYear &&
+            payment.month === currentMonth
+        )
+      : undefined
+  const isCurrentMonthApproved = existingPaymentForCurrentMonth?.state === "approved"
   const autoUploadMonth = isCurrentMonthInContractWindow ? currentMonth : null
   const autoUploadYear = isCurrentMonthInContractWindow ? currentYear : null
   const canUploadPaymentProof =
@@ -164,7 +206,15 @@ export function PaymentsPage() {
     autoUploadMonth !== null &&
     !isCurrentMonthApproved
   const canTenantEditSelectedPayment = !isAdmin && selectedPayment?.state === "pending"
-  const hasPendingChanges = canTenantEditSelectedPayment && selectedPayment && !!detailProofFile
+  const hasPendingChanges =
+    canTenantEditSelectedPayment &&
+    selectedPayment &&
+    (detailProofFiles.length > 0 ||
+      draftAttachments.length !== selectedPayment.proofAttachments.length ||
+      draftAttachments.some(
+        (attachment, index) =>
+          attachment.objectKey !== selectedPayment.proofAttachments[index]?.objectKey
+      ))
 
   const columns = [
     { key: "tenantName", label: t("tenants.name") },
@@ -199,7 +249,8 @@ export function PaymentsPage() {
 
   const openDetail = (payment: Payment) => {
     setSelectedPayment(payment)
-    setDetailProofFile(null)
+    setDraftAttachments(payment.proofAttachments)
+    setDetailProofFiles([])
     setDetailError("")
     if (detailProofInputRef.current) {
       detailProofInputRef.current.value = ""
@@ -242,7 +293,7 @@ export function PaymentsPage() {
   }
 
   const resetUploadForm = () => {
-    setProofFile(null)
+    setProofFiles([])
     setUploadError("")
     setUploading(false)
     if (proofInputRef.current) {
@@ -257,7 +308,9 @@ export function PaymentsPage() {
 
   const closeDetailModal = () => {
     setIsDetailOpen(false)
-    setDetailProofFile(null)
+    setSelectedPayment(null)
+    setDraftAttachments([])
+    setDetailProofFiles([])
     setDetailError("")
     setSavingDetail(false)
     if (detailProofInputRef.current) {
@@ -267,52 +320,55 @@ export function PaymentsPage() {
 
   const openUploadModal = () => {
     setUploadError("")
-    setProofFile(null)
+    setProofFiles([])
     if (proofInputRef.current) {
       proofInputRef.current.value = ""
     }
     setIsUploadOpen(true)
   }
 
-  const handleProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) {
-      setProofFile(null)
-      return
+  const collectAllowedFiles = (
+    fileList: FileList | null,
+    onInvalid: () => void
+  ): File[] | null => {
+    const files = Array.from(fileList || [])
+    if (files.length === 0) return []
+    if (files.some((file) => !isAllowedProofFile(file))) {
+      onInvalid()
+      return null
     }
-    if (!isAllowedProofFile(file)) {
+    return files
+  }
+
+  const handleProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const files = collectAllowedFiles(event.target.files, () => {
       setUploadError(t("payments.invalidProofError"))
       toast.error(t("payments.invalidProofError"))
-      setProofFile(null)
+      setProofFiles([])
       event.target.value = ""
-      return
-    }
+    })
+    if (files === null) return
 
     setUploadError("")
-    setProofFile(file)
+    setProofFiles(files)
   }
 
   const handleDetailProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const file = event.target.files?.[0]
-    if (!file) {
-      setDetailProofFile(null)
-      return
-    }
-    if (!isAllowedProofFile(file)) {
+    const files = collectAllowedFiles(event.target.files, () => {
       setDetailError(t("payments.invalidProofError"))
       toast.error(t("payments.invalidProofError"))
-      setDetailProofFile(null)
+      setDetailProofFiles([])
       event.target.value = ""
-      return
-    }
+    })
+    if (files === null) return
     setDetailError("")
-    setDetailProofFile(file)
+    setDetailProofFiles(files)
   }
 
   const handleUploadSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
 
-    if (!proofFile) {
+    if (proofFiles.length === 0) {
       setUploadError(t("payments.proofRequiredError"))
       toast.error(t("payments.proofRequiredError"))
       return
@@ -322,56 +378,53 @@ export function PaymentsPage() {
       toast.error(t("payments.missingContractError"))
       return
     }
-    if (autoUploadMonth === null || autoUploadYear === null || isCurrentMonthApproved) {
+    if (autoUploadMonth === null || autoUploadYear === null) {
       setUploadError(t("payments.missingContractError"))
       toast.error(t("payments.missingContractError"))
       return
     }
-
-    const contentType = proofFile.type || inferContentTypeFromFileName(proofFile.name)
-    if (!contentType) {
-      setUploadError(t("payments.invalidProofError"))
-      toast.error(t("payments.invalidProofError"))
+    if (isCurrentMonthApproved) {
+      setUploadError(t("payments.monthAlreadyApprovedError"))
+      toast.error(t("payments.monthAlreadyApprovedError"))
       return
     }
 
     setUploading(true)
     setUploadError("")
     try {
-      const paymentId = crypto.randomUUID()
       const month = autoUploadMonth
       const year = autoUploadYear
+      const pendingPayment =
+        existingPaymentForCurrentMonth?.state === "pending"
+          ? existingPaymentForCurrentMonth
+          : undefined
+      const paymentId = pendingPayment?.id || crypto.randomUUID()
 
-      const presign = await api.presignPaymentProofUpload({
-        filename: proofFile.name,
-        contentType,
+      const uploadedAttachments = await uploadProofFiles({
+        files: proofFiles,
         tenantId: tenantProfile.id,
         paymentId,
         year,
         month,
       })
 
-      const uploadResponse = await fetch(presign.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": presign.contentType },
-        body: proofFile,
-      })
-
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed with status ${uploadResponse.status}`)
+      if (pendingPayment) {
+        await api.updatePayment(pendingPayment.id, {
+          proofAttachments: [...pendingPayment.proofAttachments, ...uploadedAttachments],
+        })
+      } else {
+        await api.createPayment({
+          tenantId: tenantProfile.id,
+          tenantName: tenantProfile.name,
+          tenantEmail: tenantProfile.email,
+          contractId: activeTenantContract.id,
+          houseName: tenantProfile.houseName,
+          month,
+          year,
+          amount: activeTenantContract.monthlyPrice,
+          proofAttachments: uploadedAttachments,
+        })
       }
-
-      await api.createPayment({
-        tenantId: tenantProfile.id,
-        tenantName: tenantProfile.name,
-        tenantEmail: tenantProfile.email,
-        contractId: activeTenantContract.id,
-        houseName: tenantProfile.houseName,
-        month,
-        year,
-        amount: activeTenantContract.monthlyPrice,
-        proofImageUrl: presign.objectKey,
-      })
 
       await mutate()
       closeUploadModal()
@@ -389,7 +442,7 @@ export function PaymentsPage() {
       return
     }
 
-    if (!detailProofFile) {
+    if (!hasPendingChanges) {
       setSavingDetail(false)
       return
     }
@@ -397,35 +450,32 @@ export function PaymentsPage() {
     setSavingDetail(true)
     setDetailError("")
     try {
-      const updatePayload: {
-        proofImageUrl?: string
-      } = {}
+      let nextAttachments = [...draftAttachments]
 
-      const contentType =
-        detailProofFile.type || inferContentTypeFromFileName(detailProofFile.name)
-      if (!contentType) {
-        throw new Error(t("payments.invalidProofError"))
+      if (detailProofFiles.length > 0) {
+        const uploadedAttachments = await uploadProofFiles({
+          files: detailProofFiles,
+          tenantId: selectedPayment.tenantId,
+          paymentId: selectedPayment.id,
+          year: selectedPayment.year,
+          month: selectedPayment.month,
+        })
+        nextAttachments = [...nextAttachments, ...uploadedAttachments]
       }
-      const presign = await api.presignPaymentProofUpload({
-        filename: detailProofFile.name,
-        contentType,
-        tenantId: selectedPayment.tenantId,
-        paymentId: selectedPayment.id,
-        year: selectedPayment.year,
-        month: selectedPayment.month,
-      })
-      const uploadResponse = await fetch(presign.uploadUrl, {
-        method: "PUT",
-        headers: { "Content-Type": presign.contentType },
-        body: detailProofFile,
-      })
-      if (!uploadResponse.ok) {
-        throw new Error(`Upload failed with status ${uploadResponse.status}`)
-      }
-      updatePayload.proofImageUrl = presign.objectKey
 
-      const updated = await api.updatePayment(selectedPayment.id, updatePayload)
+      if (nextAttachments.length === 0) {
+        setDetailError(t("payments.atLeastOneProofError"))
+        toast.error(t("payments.atLeastOneProofError"))
+        setSavingDetail(false)
+        return
+      }
+
+      const updated = await api.updatePayment(selectedPayment.id, {
+        proofAttachments: nextAttachments,
+      })
       setSelectedPayment(updated)
+      setDraftAttachments(updated.proofAttachments)
+      setDetailProofFiles([])
       await mutate()
       toast.success(t("payments.updateSuccess"))
       closeDetailModal()
@@ -437,17 +487,21 @@ export function PaymentsPage() {
     }
   }
 
-  const openProofFile = async (paymentId: string) => {
-    setOpeningProof(true)
+  const removeDraftAttachment = (objectKey: string) => {
+    setDraftAttachments((current) => current.filter((item) => item.objectKey !== objectKey))
+  }
+
+  const openProofFile = async (paymentId: string, objectKey?: string) => {
+    setOpeningProofKey(objectKey || paymentId)
     try {
-      const data = await api.getPaymentProofUrl(paymentId)
+      const data = await api.getPaymentProofUrl(paymentId, objectKey)
       window.open(data.url, "_blank", "noopener,noreferrer")
       toast.success(t("general.openedSuccess"))
     } catch (error) {
       console.error("Open payment proof error:", error)
       toast.error(t("payments.openProofError"))
     } finally {
-      setOpeningProof(false)
+      setOpeningProofKey(null)
     }
   }
 
@@ -477,6 +531,14 @@ export function PaymentsPage() {
   const inputClass =
     "rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
   const filterSelectClass = `${inputClass} w-full appearance-none pr-10`
+  const proofFileNames =
+    proofFiles.length > 0
+      ? proofFiles.map((file) => file.name).join(", ")
+      : `${t("general.upload")} (.pdf, image/*)`
+  const detailProofFileNames =
+    detailProofFiles.length > 0
+      ? detailProofFiles.map((file) => file.name).join(", ")
+      : t("payments.addProof")
 
   return (
     <div className="flex flex-col gap-6">
@@ -623,40 +685,75 @@ export function PaymentsPage() {
 
             {selectedPayment.state !== "approved" && (
               <div className="border-t border-border pt-4">
-                <p className="mb-2 text-sm font-medium text-card-foreground">{t("payments.proofImage")}</p>
-                <div className="flex h-40 items-center justify-center rounded-lg border border-dashed border-border bg-muted/30">
-                  <div className="text-center text-muted-foreground">
-                    <ImageIcon className="mx-auto h-10 w-10 opacity-40" />
-                    {canTenantEditSelectedPayment && (
-                      <>
-                        <input
-                          ref={detailProofInputRef}
-                          type="file"
-                          accept=".pdf,image/*"
-                          onChange={handleDetailProofFileChange}
-                          className="hidden"
-                        />
-                        <button
-                          type="button"
-                          onClick={() => detailProofInputRef.current?.click()}
-                          disabled={savingDetail}
-                          className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                        >
-                          <Upload className="h-3.5 w-3.5" />
-                          {detailProofFile?.name || t("payments.changeProof")}
-                        </button>
-                      </>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => openProofFile(selectedPayment.id)}
-                      disabled={!selectedPayment.proofImageUrl || openingProof}
-                      className="mt-2 inline-flex items-center gap-2 rounded-lg border border-border px-3 py-1.5 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
-                    >
-                      <Download className="h-3.5 w-3.5" />
-                      {openingProof ? t("general.loading") : t("general.download")}
-                    </button>
-                  </div>
+                <p className="mb-2 text-sm font-medium text-card-foreground">
+                  {t("payments.proofFiles")}
+                </p>
+                <div className="flex flex-col gap-2 rounded-lg border border-dashed border-border bg-muted/30 p-3">
+                  {draftAttachments.length === 0 ? (
+                    <p className="text-sm text-muted-foreground">{t("general.noData")}</p>
+                  ) : (
+                    draftAttachments.map((attachment) => (
+                      <div
+                        key={attachment.objectKey}
+                        className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2"
+                      >
+                        <div className="flex min-w-0 items-center gap-2">
+                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                          <span className="truncate text-sm text-card-foreground">
+                            {attachment.filename}
+                          </span>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-1">
+                          <button
+                            type="button"
+                            onClick={() =>
+                              void openProofFile(selectedPayment.id, attachment.objectKey)
+                            }
+                            disabled={openingProofKey === attachment.objectKey}
+                            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
+                          >
+                            <Download className="h-3.5 w-3.5" />
+                            {openingProofKey === attachment.objectKey
+                              ? t("general.loading")
+                              : t("general.download")}
+                          </button>
+                          {canTenantEditSelectedPayment && (
+                            <button
+                              type="button"
+                              onClick={() => removeDraftAttachment(attachment.objectKey)}
+                              disabled={savingDetail}
+                              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                            >
+                              <X className="h-3.5 w-3.5" />
+                              {t("payments.removeProof")}
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    ))
+                  )}
+
+                  {canTenantEditSelectedPayment && (
+                    <>
+                      <input
+                        ref={detailProofInputRef}
+                        type="file"
+                        accept=".pdf,image/*"
+                        multiple
+                        onChange={handleDetailProofFileChange}
+                        className="hidden"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => detailProofInputRef.current?.click()}
+                        disabled={savingDetail}
+                        className="mt-1 inline-flex items-center justify-center gap-2 rounded-lg border border-border px-3 py-2 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <Upload className="h-3.5 w-3.5" />
+                        {detailProofFileNames}
+                      </button>
+                    </>
+                  )}
                 </div>
               </div>
             )}
@@ -729,6 +826,9 @@ export function PaymentsPage() {
           {!canUploadPaymentProof && (
             <p className="text-sm text-muted-foreground">{t("payments.missingContractError")}</p>
           )}
+          {canUploadPaymentProof && existingPaymentForCurrentMonth?.state === "pending" && (
+            <p className="text-sm text-muted-foreground">{t("payments.updatePendingHint")}</p>
+          )}
           <div className="flex flex-col gap-1.5">
             <label className="text-sm font-medium text-card-foreground">
               {t("payments.proofImage")} <span className="text-destructive">*</span>
@@ -737,6 +837,7 @@ export function PaymentsPage() {
               ref={proofInputRef}
               type="file"
               accept=".pdf,image/*"
+              multiple
               onChange={handleProofFileChange}
               className="hidden"
             />
@@ -748,9 +849,7 @@ export function PaymentsPage() {
             >
               <div className="text-center text-muted-foreground">
                 <Upload className="mx-auto h-8 w-8 opacity-50" />
-                <p className="mt-1 text-xs">
-                  {proofFile?.name || `${t("general.upload")} (.pdf, image/*)`}
-                </p>
+                <p className="mt-1 px-3 text-xs">{proofFileNames}</p>
               </div>
             </button>
           </div>

@@ -48,9 +48,10 @@ export function buildProofObjectKey(
   const cleanedFileName = rawFileName.toLowerCase().replace(/[^a-z0-9._-]/g, "_")
   const normalizedYear = String(year).replace(/[^0-9]/g, "") || new Date().getFullYear().toString()
   const normalizedMonth = String(month).replace(/[^0-9]/g, "").padStart(2, "0").slice(-2)
+  const uniqueSuffix = crypto.randomUUID().slice(0, 8)
   const rootPrefix = getRootPrefix()
 
-  return `${rootPrefix}tenants/${normalizedTenantId}/payments/${normalizedYear}/${normalizedPaymentId}-${normalizedMonth}-${cleanedFileName}`
+  return `${rootPrefix}tenants/${normalizedTenantId}/payments/${normalizedYear}/${normalizedPaymentId}-${normalizedMonth}-${uniqueSuffix}-${cleanedFileName}`
 }
 
 export function buildContractObjectKey(tenantId: string, contractId: string, kind: "draft" | "signed") {

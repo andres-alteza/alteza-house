@@ -42,6 +42,13 @@ export interface Contract {
   signedPdfUrl?: string
 }
 
+export interface PaymentProofAttachment {
+  objectKey: string
+  filename: string
+  contentType: string
+  uploadedAt?: string
+}
+
 export interface Payment {
   id: string
   tenantId: string
@@ -53,7 +60,7 @@ export interface Payment {
   year: number
   amount: number
   state: "pending" | "approved"
-  proofImageUrl: string
+  proofAttachments: PaymentProofAttachment[]
   receiptUrl?: string
   createdAt: string
 }
@@ -97,7 +104,7 @@ export type CreatePaymentInput = Pick<
   | "month"
   | "year"
   | "amount"
-  | "proofImageUrl"
+  | "proofAttachments"
 >
 
 export type UpdatePaymentStateInput = {
@@ -110,6 +117,6 @@ export type UpdatePaymentInput = {
   receiptUrl?: string
   month?: number
   year?: number
-  proofImageUrl?: string
+  proofAttachments?: PaymentProofAttachment[]
 }
 

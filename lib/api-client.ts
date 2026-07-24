@@ -214,8 +214,15 @@ export const api = {
       method: "POST",
       body: JSON.stringify(data),
     }),
-  getPaymentProofUrl: (id: string): Promise<{ url: string }> =>
-    apiFetch(`/api/payments/${id}/proof-url`),
+  getPaymentProofUrl: (
+    id: string,
+    objectKey?: string
+  ): Promise<{ url: string; objectKey: string; filename: string; contentType: string }> => {
+    const params = new URLSearchParams()
+    if (objectKey) params.set("objectKey", objectKey)
+    const query = params.toString() ? `?${params.toString()}` : ""
+    return apiFetch(`/api/payments/${id}/proof-url${query}`)
+  },
   getPaymentReceipt: (id: string): Promise<Blob> => apiFetchBlob(`/api/payments/${id}/receipt`),
   updatePayment: (id: string, data: UpdatePaymentInput): Promise<Payment> =>
     apiFetch(`/api/payments/${id}`, {
