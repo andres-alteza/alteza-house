@@ -7,7 +7,7 @@ import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
 import type { Contract, House, Payment, PaymentProofAttachment, Tenant } from "@/lib/types"
-import { DataTable } from "@/components/data-table"
+import { PaymentsGroupedTable } from "@/components/payments-grouped-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
 import { CheckCircle, FileText, Upload, Download, ChevronDown, Save, Loader2, X } from "lucide-react"
@@ -215,37 +215,6 @@ export function PaymentsPage() {
         (attachment, index) =>
           attachment.objectKey !== selectedPayment.proofAttachments[index]?.objectKey
       ))
-
-  const columns = [
-    { key: "tenantName", label: t("tenants.name") },
-    { key: "houseName", label: t("tenants.house") },
-    {
-      key: "month",
-      label: t("payments.month"),
-      render: (p: Payment) => t(`month.${p.month}`),
-    },
-    { key: "year", label: t("payments.year") },
-    {
-      key: "amount",
-      label: t("payments.amount"),
-      render: (p: Payment) => `$${p.amount.toLocaleString()}`,
-    },
-    {
-      key: "state",
-      label: t("payments.state"),
-      render: (p: Payment) => (
-        <span
-          className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${
-            p.state === "approved"
-              ? "bg-success/10 text-success"
-              : "bg-warning/10 text-warning"
-          }`}
-        >
-          {p.state === "approved" ? t("payments.approved") : t("payments.pending")}
-        </span>
-      ),
-    },
-  ]
 
   const openDetail = (payment: Payment) => {
     setSelectedPayment(payment)
@@ -621,36 +590,33 @@ export function PaymentsPage() {
         </div>
       )}
 
-      <div className="rounded-xl border border-border bg-card">
-        <DataTable
-          columns={columns}
-          data={filteredPayments}
-          onView={openDetail}
-          actions={
-            isAdmin
-              ? (payment: Payment) =>
-                  payment.state === "pending" ? (
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation()
-                        void confirmPayment(payment.id)
-                      }}
-                      disabled={confirmingPaymentId === payment.id}
-                      className="rounded p-1.5 text-success transition-colors hover:bg-success/10 disabled:opacity-50"
-                      aria-label="Confirm payment"
-                    >
-                      {confirmingPaymentId === payment.id ? (
-                        <Loader2 className="h-4 w-4 animate-spin" />
-                      ) : (
-                        <CheckCircle className="h-4 w-4" />
-                      )}
-                    </button>
-                  ) : null
-              : undefined
-          }
-        />
-      </div>
+      <PaymentsGroupedTable
+        payments={filteredPayments}
+        onView={openDetail}
+        actions={
+          isAdmin
+            ? (payment: Payment) =>
+                payment.state === "pending" ? (
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      void confirmPayment(payment.id)
+                    }}
+                    disabled={confirmingPaymentId === payment.id}
+                    className="rounded p-1.5 text-success transition-colors hover:bg-success/10 disabled:opacity-50"
+                    aria-label="Confirm payment"
+                  >
+                    {confirmingPaymentId === payment.id ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                  </button>
+                ) : null
+            : undefined
+        }
+      />
 
       {/* Detail Modal */}
       <Modal
