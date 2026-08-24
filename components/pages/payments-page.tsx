@@ -135,7 +135,8 @@ export function PaymentsPage() {
   const [filterHouse, setFilterHouse] = useState("")
   const [filterMonth, setFilterMonth] = useState("")
   const [filterYear, setFilterYear] = useState("")
-  const [showFilters, setShowFilters] = useState(false)
+  const [filterState, setFilterState] = useState("")
+  const [showFilters, setShowFilters] = useState(true)
   const [proofFiles, setProofFiles] = useState<File[]>([])
   const [detailProofFiles, setDetailProofFiles] = useState<File[]>([])
   const [uploadError, setUploadError] = useState("")
@@ -149,11 +150,12 @@ export function PaymentsPage() {
   const router = useRouter()
   const searchParams = useSearchParams()
 
-  // Build API filters (server-side filtering for house, month, year)
+  // Build API filters (server-side filtering for house, month, year, state)
   const apiFilters: Record<string, string> = {}
   if (filterHouse) apiFilters.houseName = filterHouse
   if (filterMonth) apiFilters.month = filterMonth
   if (filterYear) apiFilters.year = filterYear
+  if (filterState) apiFilters.state = filterState
 
   const { data: payments = [], mutate } = useSWR<Payment[]>(
     ["payments", apiFilters],
@@ -500,6 +502,17 @@ export function PaymentsPage() {
   const inputClass =
     "rounded-lg border border-input bg-card px-4 py-2.5 text-sm text-card-foreground placeholder:text-muted-foreground focus:border-primary focus:ring-2 focus:ring-primary/20 focus:outline-none"
   const filterSelectClass = `${inputClass} w-full appearance-none pr-10`
+  const yearOptions = [currentYear - 2, currentYear - 1, currentYear, currentYear + 1]
+  const hasActiveFilters = Boolean(
+    filterTenant || filterHouse || filterMonth || filterYear || filterState
+  )
+  const clearFilters = () => {
+    setFilterTenant("")
+    setFilterHouse("")
+    setFilterMonth("")
+    setFilterYear("")
+    setFilterState("")
+  }
   const proofFileNames =
     proofFiles.length > 0
       ? proofFiles.map((file) => file.name).join(", ")
@@ -515,6 +528,7 @@ export function PaymentsPage() {
         title={t("payments.title")}
         filterLabel={t("payments.filter")}
         onFilter={() => setShowFilters(!showFilters)}
+        filterActive={showFilters || hasActiveFilters}
         createLabel={!isAdmin ? t("payments.upload") : undefined}
         onCreate={!isAdmin ? openUploadModal : undefined}
         createDisabled={!isAdmin && !canUploadPaymentProof}
@@ -523,7 +537,7 @@ export function PaymentsPage() {
       {/* Filters */}
       {showFilters && (
         <div className="rounded-xl border border-border bg-card p-4">
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-medium text-muted-foreground">{t("tenants.name")}</label>
               <input
@@ -542,7 +556,7 @@ export function PaymentsPage() {
                   onChange={(e) => setFilterHouse(e.target.value)}
                   className={filterSelectClass}
                 >
-                  <option value="">--</option>
+                  <option value="">{t("payments.allHouses")}</option>
                   {houses.map((house) => (
                     <option key={house.id} value={house.name}>
                       {house.name}
@@ -560,7 +574,7 @@ export function PaymentsPage() {
                   onChange={(e) => setFilterMonth(e.target.value)}
                   className={filterSelectClass}
                 >
-                  <option value="">--</option>
+                  <option value="">{t("payments.allMonths")}</option>
                   {Array.from({ length: 12 }, (_, i) => (
                     <option key={i + 1} value={i + 1}>
                       {t(`month.${i + 1}`)}
@@ -578,15 +592,43 @@ export function PaymentsPage() {
                   onChange={(e) => setFilterYear(e.target.value)}
                   className={filterSelectClass}
                 >
-                  <option value="">--</option>
-                  <option value="2025">2025</option>
-                  <option value="2026">2026</option>
-                  <option value="2027">2027</option>
+                  <option value="">{t("payments.allYears")}</option>
+                  {yearOptions.map((year) => (
+                    <option key={year} value={year}>
+                      {year}
+                    </option>
+                  ))}
+                </select>
+                <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-medium text-muted-foreground">{t("payments.state")}</label>
+              <div className="relative">
+                <select
+                  value={filterState}
+                  onChange={(e) => setFilterState(e.target.value)}
+                  className={filterSelectClass}
+                >
+                  <option value="">{t("payments.allStates")}</option>
+                  <option value="pending">{t("payments.pending")}</option>
+                  <option value="approved">{t("payments.approved")}</option>
                 </select>
                 <ChevronDown className="pointer-events-none absolute top-1/2 right-3 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
               </div>
             </div>
           </div>
+          {hasActiveFilters && (
+            <div className="mt-4 flex justify-end">
+              <button
+                type="button"
+                onClick={clearFilters}
+                className="text-xs font-medium text-primary transition-colors hover:text-primary/80"
+              >
+                {t("payments.clearFilters")}
+              </button>
+            </div>
+          )}
         </div>
       )}
 

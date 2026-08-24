@@ -8,6 +8,7 @@ interface PageHeaderProps {
   title: string
   filterLabel?: string
   onFilter?: () => void
+  filterActive?: boolean
   createLabel?: string
   onCreate?: () => void
   createDisabled?: boolean
@@ -18,6 +19,7 @@ export function PageHeader({
   title,
   filterLabel,
   onFilter,
+  filterActive = false,
   createLabel,
   onCreate,
   createDisabled = false,
@@ -32,7 +34,12 @@ export function PageHeader({
           <button
             type="button"
             onClick={onFilter}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-lg border border-border bg-card px-4 py-2 text-sm font-medium text-foreground transition-colors hover:bg-muted sm:w-auto"
+            aria-pressed={filterActive || undefined}
+            className={`inline-flex w-full items-center justify-center gap-2 rounded-lg border px-4 py-2 text-sm font-medium transition-colors sm:w-auto ${
+              filterActive
+                ? "border-primary bg-primary/5 text-primary hover:bg-primary/10"
+                : "border-border bg-card text-foreground hover:bg-muted"
+            }`}
           >
             <Filter className="h-4 w-4" />
             {filterLabel}
