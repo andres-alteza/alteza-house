@@ -15,7 +15,7 @@ import { cn } from "@/lib/utils"
 
 interface PaymentsGroupedTableProps {
   payments: Payment[]
-  onView: (payment: Payment) => void
+  onView?: (payment: Payment) => void
   actions?: (payment: Payment) => React.ReactNode
 }
 
@@ -156,7 +156,7 @@ function MonthSection({
   hasActions: boolean
   onToggle: () => void
   onToggleHouse: (key: string) => void
-  onView: (payment: Payment) => void
+  onView?: (payment: Payment) => void
   actions?: (payment: Payment) => React.ReactNode
 }) {
   const { t } = useI18n()
@@ -198,7 +198,11 @@ function MonthSection({
               t("payments.paymentPlural")
             )}
             {group.pendingCount > 0
-              ? ` · ${group.pendingCount} ${t("payments.pendingLabel")}`
+              ? ` · ${countLabel(
+                  group.pendingCount,
+                  t("payments.pendingSingular"),
+                  t("payments.pendingLabel")
+                )}`
               : ""}
           </p>
         </div>
@@ -210,20 +214,20 @@ function MonthSection({
       {isOpen && (
         <div id={panelId}>
           <div className="overflow-x-auto">
-            <table className="min-w-[640px] w-full">
+            <table className="w-full">
               <thead className="sticky top-0 z-10 bg-card">
                 <tr className="border-b border-border">
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground sm:px-4">
                     {t("tenants.name")}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="px-3 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground sm:px-4">
                     {t("payments.amount")}
                   </th>
-                  <th className="px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                  <th className="hidden px-4 py-3 text-left text-xs font-bold uppercase tracking-wider text-muted-foreground sm:table-cell">
                     {t("payments.state")}
                   </th>
                   {hasActions && (
-                    <th className="px-4 py-3 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground">
+                    <th className="px-3 py-3 text-right text-xs font-bold uppercase tracking-wider text-muted-foreground sm:px-4">
                       {t("general.actions")}
                     </th>
                   )}
@@ -244,15 +248,19 @@ function MonthSection({
               ))}
               <tfoot>
                 <tr className="border-t border-border bg-muted/40">
-                  <td className="px-4 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  <td className="px-3 py-3 text-xs font-semibold uppercase tracking-wider text-muted-foreground sm:px-4">
                     {t("payments.monthTotal")}
                   </td>
-                  <td className="px-4 py-3 text-sm font-semibold tabular-nums text-card-foreground">
+                  <td className="px-3 py-3 text-sm font-semibold tabular-nums text-card-foreground sm:px-4">
                     {formatAmount(group.totalAmount)}
                   </td>
-                  <td className="px-4 py-3 text-xs text-muted-foreground">
+                  <td className="hidden px-4 py-3 text-xs text-muted-foreground sm:table-cell">
                     {group.pendingCount > 0
-                      ? `${group.pendingCount} ${t("payments.pendingLabel")}`
+                      ? countLabel(
+                          group.pendingCount,
+                          t("payments.pendingSingular"),
+                          t("payments.pendingLabel")
+                        )
                       : t("payments.approved")}
                   </td>
                   {hasActions && <td />}
@@ -282,7 +290,7 @@ function HouseGroup({
   columnCount: number
   hasActions: boolean
   onToggle: () => void
-  onView: (payment: Payment) => void
+  onView?: (payment: Payment) => void
   actions?: (payment: Payment) => React.ReactNode
 }) {
   const { t } = useI18n()
@@ -298,7 +306,7 @@ function HouseGroup({
             onClick={onToggle}
             aria-expanded={isOpen}
             aria-controls={panelId}
-            className="flex w-full items-center gap-2 px-4 py-2.5 text-left transition-colors hover:bg-muted"
+            className="flex w-full flex-wrap items-center gap-2 px-3 py-2.5 text-left transition-colors hover:bg-muted sm:px-4"
           >
             <span className="h-4 w-1 shrink-0 rounded-full bg-primary/60" aria-hidden />
             <ChevronDown
@@ -320,7 +328,11 @@ function HouseGroup({
             </span>
             {house.pendingCount > 0 && (
               <span className="inline-flex rounded-full bg-warning/10 px-2 py-0.5 text-[11px] font-medium text-warning">
-                {house.pendingCount} {t("payments.pendingLabel")}
+                {countLabel(
+                  house.pendingCount,
+                  t("payments.pendingSingular"),
+                  t("payments.pendingLabel")
+                )}
               </span>
             )}
             <span className="ml-auto text-sm font-medium tabular-nums text-card-foreground">
@@ -333,18 +345,28 @@ function HouseGroup({
         house.payments.map((payment) => (
           <tr
             key={payment.id}
-            onClick={() => onView(payment)}
-            className="cursor-pointer border-b border-border/50 last:border-b-0 transition-colors hover:bg-muted/30"
+            onClick={onView ? () => onView(payment) : undefined}
+            className={cn(
+              "border-b border-border/50 last:border-b-0 transition-colors hover:bg-muted/30",
+              onView && "cursor-pointer"
+            )}
           >
-            <td className="px-4 py-3 pl-12 text-sm text-foreground">{payment.tenantName}</td>
-            <td className="px-4 py-3 text-sm tabular-nums text-foreground">
+            <td className="px-3 py-3 pl-8 text-sm text-foreground sm:px-4 sm:pl-12">
+              <div className="flex flex-col items-start gap-1">
+                <span>{payment.tenantName}</span>
+                <span className="sm:hidden">
+                  <PaymentStateBadge state={payment.state} />
+                </span>
+              </div>
+            </td>
+            <td className="px-3 py-3 text-sm tabular-nums text-foreground sm:px-4">
               {formatAmount(payment.amount)}
             </td>
-            <td className="px-4 py-3">
+            <td className="hidden px-4 py-3 sm:table-cell">
               <PaymentStateBadge state={payment.state} />
             </td>
             {hasActions && (
-              <td className="px-4 py-3 text-right" onClick={(event) => event.stopPropagation()}>
+              <td className="px-3 py-3 text-right sm:px-4" onClick={(event) => event.stopPropagation()}>
                 <div className="inline-flex items-center gap-1">{actions?.(payment)}</div>
               </td>
             )}
