@@ -1,5 +1,10 @@
 import { ObjectId } from "mongodb"
 import { getCollection } from "@/lib/mongodb"
+import {
+  iterateContractMonths,
+  toMonthKey,
+  unpaidBalance,
+} from "@/lib/payment-periods"
 
 type ContractDoc = {
   _id: ObjectId
@@ -71,48 +76,6 @@ const MONTH_LABELS = [
   "noviembre",
   "diciembre",
 ]
-
-function parseYearMonth(value: string) {
-  const [yearRaw, monthRaw] = value.split("-")
-  const year = Number.parseInt(yearRaw ?? "", 10)
-  const month = Number.parseInt(monthRaw ?? "", 10)
-  if (!Number.isInteger(year) || !Number.isInteger(month) || month < 1 || month > 12) {
-    return null
-  }
-  return { year, month }
-}
-
-function toMonthKey(year: number, month: number) {
-  return `${year}-${String(month).padStart(2, "0")}`
-}
-
-function compareYearMonth(a: { year: number; month: number }, b: { year: number; month: number }) {
-  if (a.year !== b.year) return a.year - b.year
-  return a.month - b.month
-}
-
-function* contractMonths(
-  contract: ContractDoc,
-  target: { year: number; month: number }
-) {
-  const start = parseYearMonth(contract.startDate)
-  const end = parseYearMonth(contract.endDate)
-  if (!start || !end) return
-
-  const cappedEnd = compareYearMonth(end, target) < 0 ? end : target
-  if (compareYearMonth(start, cappedEnd) > 0) return
-
-  let year = start.year
-  let month = start.month
-  while (compareYearMonth({ year, month }, cappedEnd) <= 0) {
-    yield { year, month }
-    month += 1
-    if (month > 12) {
-      month = 1
-      year += 1
-    }
-  }
-}
 
 function buildDueDateLabel({ year, month, paymentDueDate }: ReminderPeriod) {
   return `${paymentDueDate} de ${MONTH_LABELS[month] ?? String(month)} de ${year}`
@@ -189,9 +152,9 @@ export async function buildOverduePaymentReminders(
     const contractId = contract._id.toString()
     const unpaidMonths: OverduePaymentReminder["unpaidMonths"] = []
 
-    for (const { year, month } of contractMonths(contract, period)) {
+    for (const { year, month } of iterateContractMonths(contract.startDate, contract.endDate, period)) {
       const approvedAmount = approvedByContractMonth.get(`${contractId}|${toMonthKey(year, month)}`) ?? 0
-      const balance = Math.max(Number(contract.monthlyPrice || 0) - approvedAmount, 0)
+      const balance = unpaidBalance(contract.monthlyPrice, approvedAmount)
       if (balance > 0) {
         unpaidMonths.push({ year, month, balance })
       }

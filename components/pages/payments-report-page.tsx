@@ -35,8 +35,12 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
 
   const [selectedHouseId, setSelectedHouseId] = useState("")
   const [selectedTenantId, setSelectedTenantId] = useState("")
-  const [selectedYear, setSelectedYear] = useState("")
-  const [selectedMonth, setSelectedMonth] = useState("")
+  const [selectedYear, setSelectedYear] = useState(() =>
+    reportState === "approved" ? String(new Date().getFullYear()) : ""
+  )
+  const [selectedMonth, setSelectedMonth] = useState(() =>
+    reportState === "approved" ? String(new Date().getMonth() + 1) : ""
+  )
   const [downloading, setDownloading] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const [newEmail, setNewEmail] = useState("")
@@ -186,6 +190,9 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
       <PageHeader
         title={reportState === "approved" ? t("reports.paidTitle") : t("reports.unpaidTitle")}
       />
+      <p className="text-sm text-muted-foreground">
+        {reportState === "approved" ? t("reports.paidDescription") : t("reports.unpaidDescription")}
+      </p>
       <div className="rounded-xl border border-border bg-card p-4">
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <div className="flex flex-col gap-1.5">

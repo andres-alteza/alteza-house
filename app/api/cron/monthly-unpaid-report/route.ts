@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAppSettings } from "@/lib/app-settings"
 import { getCollection } from "@/lib/mongodb"
 import { buildOverduePaymentReminders, type OverduePaymentReminder } from "@/lib/payment-reminders"
+import { getBogotaDateParts } from "@/lib/payment-periods"
 import { buildPaymentsReport } from "@/lib/payments-report"
 import { sendPaymentsReportEmail } from "@/lib/resend"
 import {
@@ -31,23 +32,6 @@ type WhatsAppReminderLogDoc = {
   error?: string
   createdAt: Date
   updatedAt: Date
-}
-
-function getBogotaDateParts(now = new Date()) {
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "America/Bogota",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  })
-  const parts = formatter.formatToParts(now)
-  const get = (type: "year" | "month" | "day") =>
-    Number(parts.find((p) => p.type === type)?.value ?? 0)
-  const year = get("year")
-  const month = get("month")
-  const day = get("day")
-  const date = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`
-  return { year, month, day, date }
 }
 
 function isAuthorized(req: NextRequest) {
@@ -241,7 +225,7 @@ export async function GET(req: NextRequest) {
   try {
     if (shouldSendReports && emailRecipients.length) {
       const paidReport = await buildPaymentsReport({ state: "approved", year, month })
-      const unpaidReport = await buildPaymentsReport({ state: "pending", year, month })
+      const unpaidReport = await buildPaymentsReport({ state: "pending" })
       const from = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
 
       await Promise.all([

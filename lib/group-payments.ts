@@ -1,17 +1,26 @@
 import type { Payment } from "./types"
 
-export type PaymentHouseGroup = {
+export type GroupablePayment = {
+  year: number
+  month: number
   houseName: string
-  payments: Payment[]
+  tenantName: string
+  amount: number
+  state?: string
+}
+
+export type PaymentHouseGroup<T extends GroupablePayment = Payment> = {
+  houseName: string
+  payments: T[]
   totalAmount: number
   pendingCount: number
 }
 
-export type PaymentMonthGroup = {
+export type PaymentMonthGroup<T extends GroupablePayment = Payment> = {
   key: string
   year: number
   month: number
-  houses: PaymentHouseGroup[]
+  houses: PaymentHouseGroup<T>[]
   totalAmount: number
   pendingCount: number
   paymentCount: number
@@ -26,11 +35,11 @@ export function houseGroupKey(monthKey: string, houseName: string) {
   return `${monthKey}::${houseName}`
 }
 
-function sumAmounts(payments: Payment[]) {
+function sumAmounts<T extends GroupablePayment>(payments: T[]) {
   return payments.reduce((sum, payment) => sum + payment.amount, 0)
 }
 
-function countPending(payments: Payment[]) {
+function countPending<T extends GroupablePayment>(payments: T[]) {
   return payments.filter((payment) => payment.state === "pending").length
 }
 
@@ -38,12 +47,14 @@ function compareNames(a: string, b: string) {
   return a.localeCompare(b, undefined, { sensitivity: "base" })
 }
 
-function sortPayments(payments: Payment[]) {
+function sortPayments<T extends GroupablePayment>(payments: T[]) {
   return [...payments].sort((a, b) => compareNames(a.tenantName, b.tenantName))
 }
 
-export function groupPaymentsByMonthAndHouse(payments: Payment[]): PaymentMonthGroup[] {
-  const byMonth = new Map<string, Payment[]>()
+export function groupPaymentsByMonthAndHouse<T extends GroupablePayment>(
+  payments: T[]
+): PaymentMonthGroup<T>[] {
+  const byMonth = new Map<string, T[]>()
 
   for (const payment of payments) {
     const key = monthGroupKey(payment.year, payment.month)
@@ -58,7 +69,7 @@ export function groupPaymentsByMonthAndHouse(payments: Payment[]): PaymentMonthG
   return [...byMonth.entries()]
     .map(([key, monthPayments]) => {
       const first = monthPayments[0]
-      const byHouse = new Map<string, Payment[]>()
+      const byHouse = new Map<string, T[]>()
 
       for (const payment of monthPayments) {
         const houseName = payment.houseName || ""
