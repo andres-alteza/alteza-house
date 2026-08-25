@@ -162,7 +162,8 @@ export async function renderPaymentsReportPdf({
     for (const monthGroup of grouped) {
       const monthLabel = `${MONTH_LABELS[monthGroup.month] ?? monthGroup.month} ${monthGroup.year}`
       const isCurrentMonth = monthGroup.year === cutoff.year && monthGroup.month === cutoff.month
-      ensureRoom(36)
+      const firstHouseRows = monthGroup.houses[0]?.payments.length ?? 0
+      ensureRoom(36 + 60 + (firstHouseRows + 2) * rowHeight)
 
       page.drawText(isCurrentMonth ? `${monthLabel}  (Este mes)` : monthLabel, {
         x: margin,
