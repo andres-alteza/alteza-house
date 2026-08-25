@@ -83,6 +83,8 @@ test("renders an unpaid PDF that includes tenants without a payment record", asy
   })
 
   assert.equal(report.filename, "payments-report-unpaid.pdf")
+  assert.match(report.subject, /Inquilinos con deudas/)
+  assert.match(report.filtersLabel, /Estado: Con deudas/)
   assert.match(report.filtersLabel, /Corte: hasta Agosto 2026/)
   assert.equal(Buffer.from(report.bytes).subarray(0, 5).toString(), "%PDF-")
 

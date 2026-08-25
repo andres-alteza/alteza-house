@@ -56,13 +56,13 @@ function reportKind(state: ReportFilters["state"]) {
 
 function reportTitle(state: ReportFilters["state"]) {
   if (state === "approved") return "Inquilinos al dia"
-  if (state === "pending") return "Inquilinos con meses impagos"
+  if (state === "pending") return "Inquilinos con deudas"
   return "Reporte de pagos"
 }
 
 function emptyMessage(state: ReportFilters["state"]) {
   if (state === "approved") return "No hay inquilinos al dia para el periodo seleccionado."
-  if (state === "pending") return "No hay meses impagos para los filtros seleccionados."
+  if (state === "pending") return "No hay inquilinos con deudas para los filtros seleccionados."
   return "No se encontraron pagos con los filtros seleccionados."
 }
 
@@ -95,7 +95,7 @@ export async function renderPaymentsReportPdf({
 
   let page = pdf.addPage([pageWidth, pageHeight])
   let cursorY = pageHeight - margin
-  const stateLabelText = state === "all" ? "Todos" : state === "approved" ? "Al dia" : "Impago"
+  const stateLabelText = state === "all" ? "Todos" : state === "approved" ? "Al dia" : "Con deudas"
 
   const filtersLabel = [
     `Casa: ${houseLabel}`,

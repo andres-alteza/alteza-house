@@ -81,7 +81,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.receipts": "Recibos",
     "nav.reports": "Reportes",
     "nav.reportsPaid": "Pagos cobrados",
-    "nav.reportsUnpaid": "Meses impagos",
+    "nav.reportsUnpaid": "Con deudas",
     "nav.settings": "Configuraciones",
     "nav.profile": "Perfil",
     "nav.management": "Gestión",
@@ -254,7 +254,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.allStates": "Todos los estados",
     "reports.paymentsTitle": "Reporte de Pagos",
     "reports.paidTitle": "Inquilinos al día este mes",
-    "reports.unpaidTitle": "Inquilinos con meses impagos",
+    "reports.unpaidTitle": "Inquilinos con deudas",
     "reports.paidDescription":
       "Lista los inquilinos con pago aprobado en el mes seleccionado, agrupados por casa como en Pagos.",
     "reports.unpaidDescription":
@@ -415,7 +415,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "nav.receipts": "Receipts",
     "nav.reports": "Reports",
     "nav.reportsPaid": "Collected payments",
-    "nav.reportsUnpaid": "Unpaid months",
+    "nav.reportsUnpaid": "With debts",
     "nav.settings": "Settings",
     "nav.profile": "Profile",
     "nav.management": "Management",
@@ -588,7 +588,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.allStates": "All statuses",
     "reports.paymentsTitle": "Payments Report",
     "reports.paidTitle": "Tenants paid this month",
-    "reports.unpaidTitle": "Tenants with unpaid months",
+    "reports.unpaidTitle": "Tenants with debts",
     "reports.paidDescription":
       "Lists tenants with an approved payment for the selected month, grouped by house like Payments.",
     "reports.unpaidDescription":
