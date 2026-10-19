@@ -25,13 +25,9 @@ export function PaymentProofPreview({
   )
 
   useEffect(() => {
-    if (knownEmpty) {
-      setPreview({ status: "empty" })
-      return
-    }
+    if (knownEmpty) return
 
     let cancelled = false
-    setPreview({ status: "loading" })
 
     void api
       .getPaymentProofUrl(paymentId, attachment.objectKey)
@@ -47,21 +43,17 @@ export function PaymentProofPreview({
           contentType: data.contentType,
         })
       })
-      .catch((error: { code?: string }) => {
+      .catch(() => {
         if (cancelled) return
-        if (error?.code === "empty_proof") {
-          setPreview({ status: "empty" })
-          return
-        }
         setPreview({ status: "empty" })
       })
 
     return () => {
       cancelled = true
     }
-  }, [attachment.objectKey, attachment.size, knownEmpty, paymentId])
+  }, [attachment.objectKey, knownEmpty, paymentId])
 
-  if (preview.status === "empty") {
+  if (knownEmpty || preview.status === "empty") {
     return (
       <div className="flex min-h-24 items-center justify-center rounded-md border border-dashed border-border bg-muted/40 px-3 py-4 text-center text-xs font-medium text-muted-foreground">
         {t("payments.emptyProofFile")}
@@ -83,7 +75,7 @@ export function PaymentProofPreview({
       <img
         src={preview.url}
         alt={attachment.filename}
-        className="max-h-48 w-full rounded-md border border-border object-contain bg-muted/20"
+        className="max-h-48 w-full rounded-md border border-border bg-muted/20 object-contain"
         onError={() => setPreview({ status: "empty" })}
       />
     )

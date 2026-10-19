@@ -775,6 +775,7 @@ export function PaymentsPage() {
                         selectedPayment.state === "approved" ||
                         attachment.size === 0 ? (
                           <PaymentProofPreview
+                            key={attachment.objectKey}
                             paymentId={selectedPayment.id}
                             attachment={attachment}
                           />
