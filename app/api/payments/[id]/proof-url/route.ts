@@ -5,15 +5,19 @@ import { withAuth } from "@/lib/api-auth"
 import { getCollection } from "@/lib/mongodb"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { normalizeProofAttachments } from "@/lib/payment-proofs"
-import { getS3Bucket, getS3Client, parseStoredProofReferenceToObjectKey } from "@/lib/s3"
+import { getS3Bucket, getS3Client, getS3Prefix } from "@/lib/s3"
 import {
   EmptyOrMissingProofError,
-  isS3NotFound,
+  InvalidProofKeyError,
+  isAllowedProofObjectKey,
+  isUnsafeProofObjectKey,
   proofObjectHttpError,
-} from "@/lib/assert-payment-proofs"
+} from "@/lib/payment-proof-constraints"
+import { isS3NotFound } from "@/lib/assert-payment-proofs"
 
 type PaymentDoc = {
   _id: import("mongodb").ObjectId
+  tenantId: string
   tenantEmail: string
   proofAttachments?: unknown
   proofImageUrl?: string
@@ -41,43 +45,47 @@ export const GET = withAuth(async (req: NextRequest, user, { params }: { params:
   }
 
   const requestedKey = req.nextUrl.searchParams.get("objectKey")?.trim() || ""
-  const requestedNormalized = requestedKey
-    ? parseStoredProofReferenceToObjectKey(requestedKey) || requestedKey
-    : ""
-  const attachment = requestedNormalized
-    ? attachments.find((item) => item.objectKey === requestedNormalized)
+  if (requestedKey && isUnsafeProofObjectKey(requestedKey)) {
+    const mapped = proofObjectHttpError(new InvalidProofKeyError(requestedKey, requestedKey))
+    return NextResponse.json(mapped, { status: 400 })
+  }
+  const attachment = requestedKey
+    ? attachments.find((item) => item.objectKey === requestedKey)
     : attachments[0]
 
   if (!attachment) {
     return NextResponse.json({ error: "Proof file not found" }, { status: 404 })
   }
 
-  const objectKey = parseStoredProofReferenceToObjectKey(attachment.objectKey) || attachment.objectKey
-  if (!objectKey) {
-    return NextResponse.json({ error: "Proof file not found" }, { status: 404 })
+  const objectKey = attachment.objectKey.trim()
+  if (!isAllowedProofObjectKey(objectKey, payment.tenantId, getS3Prefix())) {
+    const mapped = proofObjectHttpError(new InvalidProofKeyError(attachment.filename, objectKey))
+    return NextResponse.json(mapped, { status: 400 })
   }
 
   const bucket = getS3Bucket()
   const client = getS3Client()
 
-  let size = 0
-  try {
-    const head = await client.send(
-      new HeadObjectCommand({
-        Bucket: bucket,
-        Key: objectKey,
-      })
-    )
-    size = head.ContentLength ?? 0
-  } catch (error) {
-    if (isS3NotFound(error)) {
-      const mapped = proofObjectHttpError(new EmptyOrMissingProofError(attachment.filename, objectKey))
-      return NextResponse.json(mapped, { status: 400 })
+  let size = typeof attachment.size === "number" ? attachment.size : undefined
+  if (size === undefined) {
+    try {
+      const head = await client.send(
+        new HeadObjectCommand({
+          Bucket: bucket,
+          Key: objectKey,
+        })
+      )
+      size = head.ContentLength ?? 0
+    } catch (error) {
+      if (isS3NotFound(error)) {
+        const mapped = proofObjectHttpError(new EmptyOrMissingProofError(attachment.filename, objectKey))
+        return NextResponse.json(mapped, { status: 400 })
+      }
+      throw error
     }
-    throw error
   }
 
-  if (size <= 0) {
+  if (!size || size <= 0) {
     const mapped = proofObjectHttpError(new EmptyOrMissingProofError(attachment.filename, objectKey))
     return NextResponse.json(mapped, { status: 400 })
   }

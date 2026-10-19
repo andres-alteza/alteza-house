@@ -108,7 +108,9 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   const createdAt = new Date()
   let storedAttachments
   try {
-    const verifiedAttachments = await assertProofAttachmentsInS3(proofAttachments)
+    const verifiedAttachments = await assertProofAttachmentsInS3(proofAttachments, {
+      tenantId,
+    })
     storedAttachments = toStoredProofAttachments(verifiedAttachments)
   } catch (error) {
     const mapped = proofObjectHttpError(error)

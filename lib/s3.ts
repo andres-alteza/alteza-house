@@ -28,8 +28,13 @@ export function getS3Client() {
   return getClient()
 }
 
+export function getS3Prefix() {
+  return S3_PREFIX ? S3_PREFIX.replace(/^\/+|\/+$/g, "") : ""
+}
+
 function getRootPrefix() {
-  return S3_PREFIX ? `${S3_PREFIX.replace(/^\/+|\/+$/g, "")}/` : ""
+  const prefix = getS3Prefix()
+  return prefix ? `${prefix}/` : ""
 }
 
 function normalizePathToken(value: string) {

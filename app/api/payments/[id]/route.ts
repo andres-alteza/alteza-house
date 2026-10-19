@@ -91,7 +91,9 @@ export const PATCH = withAuth(async (req: NextRequest, user, { params }: { param
         ? toStoredProofAttachments(proofAttachments)
         : normalizeProofAttachments(existing)
     try {
-      const verifiedAttachments = await assertProofAttachmentsInS3(attachmentsToVerify)
+      const verifiedAttachments = await assertProofAttachmentsInS3(attachmentsToVerify, {
+        tenantId: existing.tenantId,
+      })
       if (proofAttachments !== undefined) {
         const storedAttachments = toStoredProofAttachments(verifiedAttachments)
         updateFields.proofAttachments = storedAttachments
