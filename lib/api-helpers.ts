@@ -7,8 +7,8 @@ function zodErrorMessage(error: z.ZodError): string {
   return error.issues.map((i) => i.message).join(", ")
 }
 
-export function badRequest(message: string) {
-  return NextResponse.json({ error: message }, { status: 400 })
+export function badRequest(message: string, extra?: Record<string, unknown>) {
+  return NextResponse.json({ error: message, ...extra }, { status: 400 })
 }
 
 export async function parseJson<TSchema extends ZodTypeAny>(

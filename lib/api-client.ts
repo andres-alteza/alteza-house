@@ -39,9 +39,13 @@ async function apiFetch<T>(url: string, options: RequestInit = {}): Promise<T> {
     const error = new Error(body.error || `API error: ${res.status}`) as Error & {
       code?: string
       status?: number
+      filename?: string
     }
     if (typeof body?.code === "string") {
       error.code = body.code
+    }
+    if (typeof body?.filename === "string") {
+      error.filename = body.filename
     }
     error.status = res.status
     throw error
@@ -66,9 +70,13 @@ async function apiFetchBlob(url: string, options: RequestInit = {}): Promise<Blo
     const error = new Error(body.error || `API error: ${res.status}`) as Error & {
       code?: string
       status?: number
+      filename?: string
     }
     if (typeof body?.code === "string") {
       error.code = body.code
+    }
+    if (typeof body?.filename === "string") {
+      error.filename = body.filename
     }
     error.status = res.status
     throw error
@@ -80,6 +88,7 @@ async function apiFetchBlob(url: string, options: RequestInit = {}): Promise<Blo
 type PresignPaymentProofRequest = {
   filename: string
   contentType: string
+  size: number
   tenantId: string
   paymentId: string
   year: number
@@ -217,7 +226,13 @@ export const api = {
   getPaymentProofUrl: (
     id: string,
     objectKey?: string
-  ): Promise<{ url: string; objectKey: string; filename: string; contentType: string }> => {
+  ): Promise<{
+    url: string
+    objectKey: string
+    filename: string
+    contentType: string
+    size: number
+  }> => {
     const params = new URLSearchParams()
     if (objectKey) params.set("objectKey", objectKey)
     const query = params.toString() ? `?${params.toString()}` : ""

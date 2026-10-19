@@ -329,7 +329,10 @@ function TenantDashboard({
       toast.success(t("general.openedSuccess"))
     } catch (error) {
       console.error("Open payment proof error:", error)
-      toast.error(t("payments.openProofError"))
+      const record = error as { code?: string } | null
+      toast.error(
+        record?.code === "empty_proof" ? t("payments.emptyProofFile") : t("payments.openProofError")
+      )
     } finally {
       setOpeningProofId(null)
     }
