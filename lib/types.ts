@@ -47,6 +47,7 @@ export interface PaymentProofAttachment {
   filename: string
   contentType: string
   uploadedAt?: string
+  size?: number
 }
 
 export interface Payment {

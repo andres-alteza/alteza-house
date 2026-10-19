@@ -7,6 +7,7 @@ export const paymentProofAttachmentSchema = z.object({
   filename: z.string().trim().min(1, "Proof filename is required"),
   contentType: z.string().trim().min(1, "Proof content type is required"),
   uploadedAt: z.string().trim().optional(),
+  size: z.number().int().nonnegative().optional(),
 })
 
 export const createPaymentSchema = z.object({

@@ -5,7 +5,8 @@ import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { badRequest, parseJson } from "@/lib/api-helpers"
 import { updatePaymentSchema } from "@/lib/schemas/payment"
 import { serializePayment } from "@/lib/serializers/payment"
-import { toStoredProofAttachments } from "@/lib/payment-proofs"
+import { normalizeProofAttachments, toStoredProofAttachments } from "@/lib/payment-proofs"
+import { assertProofAttachmentsInS3, proofObjectHttpError } from "@/lib/assert-payment-proofs"
 
 type PaymentDoc = {
   _id: import("mongodb").ObjectId
@@ -83,10 +84,24 @@ export const PATCH = withAuth(async (req: NextRequest, user, { params }: { param
   }
   if (month !== undefined) updateFields.month = month
   if (year !== undefined) updateFields.year = year
-  if (proofAttachments !== undefined) {
-    const storedAttachments = toStoredProofAttachments(proofAttachments)
-    updateFields.proofAttachments = storedAttachments
-    updateFields.proofImageUrl = storedAttachments[0]?.objectKey ?? ""
+
+  if (proofAttachments !== undefined || state === "approved") {
+    const attachmentsToVerify =
+      proofAttachments !== undefined
+        ? toStoredProofAttachments(proofAttachments)
+        : normalizeProofAttachments(existing)
+    try {
+      const verifiedAttachments = await assertProofAttachmentsInS3(attachmentsToVerify)
+      if (proofAttachments !== undefined) {
+        const storedAttachments = toStoredProofAttachments(verifiedAttachments)
+        updateFields.proofAttachments = storedAttachments
+        updateFields.proofImageUrl = storedAttachments[0]?.objectKey ?? ""
+      }
+    } catch (error) {
+      const mapped = proofObjectHttpError(error)
+      if (mapped) return NextResponse.json(mapped, { status: 400 })
+      throw error
+    }
   }
 
   const updated = await col.findOneAndUpdate(

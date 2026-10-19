@@ -236,6 +236,12 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.monthAlreadyApprovedError":
       "Este mes ya tiene un pago aprobado y no se puede modificar.",
     "payments.atLeastOneProofError": "El pago debe conservar al menos un comprobante.",
+    "payments.emptyFileError":
+      "El archivo está vacío. Elige otra foto e inténtalo de nuevo.",
+    "payments.fileTooLargeError": "El archivo supera el límite de 10 MB.",
+    "payments.emptyProofFile": "Archivo vacío o ausente",
+    "payments.confirmEmptyProofError":
+      "No se puede aprobar el pago porque el archivo está vacío o ausente: {filename}",
     "payments.expandAll": "Expandir todo",
     "payments.collapseAll": "Contraer todo",
     "payments.paymentSingular": "pago",
@@ -570,6 +576,11 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.monthAlreadyApprovedError":
       "This month already has an approved payment and cannot be changed.",
     "payments.atLeastOneProofError": "The payment must keep at least one proof.",
+    "payments.emptyFileError": "This file is empty. Choose another photo and try again.",
+    "payments.fileTooLargeError": "This file is larger than the 10 MB limit.",
+    "payments.emptyProofFile": "Empty or missing file",
+    "payments.confirmEmptyProofError":
+      "This payment cannot be approved because a proof file is empty or missing: {filename}",
     "payments.expandAll": "Expand all",
     "payments.collapseAll": "Collapse all",
     "payments.paymentSingular": "payment",

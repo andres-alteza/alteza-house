@@ -5,6 +5,7 @@ import { badRequest, parseJson, parseQuery } from "@/lib/api-helpers"
 import { createPaymentSchema, paymentsQuerySchema } from "@/lib/schemas/payment"
 import { serializePayment } from "@/lib/serializers/payment"
 import { toStoredProofAttachments } from "@/lib/payment-proofs"
+import { assertProofAttachmentsInS3, proofObjectHttpError } from "@/lib/assert-payment-proofs"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 
 type TenantDoc = {
@@ -105,7 +106,15 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   }
 
   const createdAt = new Date()
-  const storedAttachments = toStoredProofAttachments(proofAttachments)
+  let storedAttachments
+  try {
+    const verifiedAttachments = await assertProofAttachmentsInS3(proofAttachments)
+    storedAttachments = toStoredProofAttachments(verifiedAttachments)
+  } catch (error) {
+    const mapped = proofObjectHttpError(error)
+    if (mapped) return NextResponse.json(mapped, { status: 400 })
+    throw error
+  }
   const result = await col.insertOne({
     tenantId,
     tenantName,

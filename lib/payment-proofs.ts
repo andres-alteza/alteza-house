@@ -36,8 +36,12 @@ export function normalizeProofAttachments(doc: {
         typeof record.uploadedAt === "string" && record.uploadedAt.trim()
           ? record.uploadedAt.trim()
           : undefined
+      const size =
+        typeof record.size === "number" && Number.isFinite(record.size) && record.size >= 0
+          ? record.size
+          : undefined
 
-      normalized.push({ objectKey, filename, contentType, uploadedAt })
+      normalized.push({ objectKey, filename, contentType, uploadedAt, size })
     }
 
     if (normalized.length > 0) return normalized
@@ -65,6 +69,7 @@ export function toStoredProofAttachments(
     filename: string
     contentType: string
     uploadedAt?: string
+    size?: number
   }>
 ): PaymentProofAttachment[] {
   return attachments.map((attachment) => ({
@@ -72,5 +77,8 @@ export function toStoredProofAttachments(
     filename: attachment.filename.trim(),
     contentType: attachment.contentType.trim(),
     uploadedAt: attachment.uploadedAt?.trim() || new Date().toISOString(),
+    ...(typeof attachment.size === "number" && Number.isFinite(attachment.size)
+      ? { size: attachment.size }
+      : {}),
   }))
 }

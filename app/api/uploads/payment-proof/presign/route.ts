@@ -7,13 +7,11 @@ import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { getCollection } from "@/lib/mongodb"
 import { presignPaymentProofSchema } from "@/lib/schemas/upload"
 import { buildProofObjectKey, getS3Bucket, getS3Client } from "@/lib/s3"
-
-const ALLOWED_EXACT_CONTENT_TYPES = new Set(["application/pdf"])
-
-function isAllowedProofContentType(contentType: string) {
-  const normalized = contentType.toLowerCase()
-  return ALLOWED_EXACT_CONTENT_TYPES.has(normalized) || normalized.startsWith("image/")
-}
+import {
+  inferProofContentType,
+  isProofSizeAllowed,
+  paymentProofPutObjectInput,
+} from "@/lib/payment-proof-constraints"
 
 type TenantDoc = {
   _id: import("mongodb").ObjectId
@@ -38,11 +36,14 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   const parsed = await parseJson(req, presignPaymentProofSchema)
   if ("error" in parsed) return parsed.error
 
-  const { filename, contentType, tenantId, paymentId, year, month } = parsed.data
-  const normalizedContentType = contentType.toLowerCase()
+  const { filename, contentType, size, tenantId, paymentId, year, month } = parsed.data
+  const normalizedContentType = inferProofContentType(filename, contentType)
 
-  if (!isAllowedProofContentType(normalizedContentType)) {
+  if (!normalizedContentType) {
     return badRequest("Only PDF files or images are allowed")
+  }
+  if (!isProofSizeAllowed(size)) {
+    return badRequest("File must be greater than 0 bytes and at most 10 MB")
   }
 
   if (user.role !== "admin") {
@@ -73,11 +74,14 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   const objectKey = buildProofObjectKey(filename, tenantId, paymentId, year, month)
   const bucket = getS3Bucket()
   const client = getS3Client()
-  const command = new PutObjectCommand({
-    Bucket: bucket,
-    Key: objectKey,
-    ContentType: normalizedContentType,
-  })
+  const command = new PutObjectCommand(
+    paymentProofPutObjectInput({
+      bucket,
+      objectKey,
+      contentType: normalizedContentType,
+      size,
+    })
+  )
 
   const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 })
 

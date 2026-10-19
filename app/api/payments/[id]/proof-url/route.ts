@@ -1,11 +1,16 @@
 import { NextRequest, NextResponse } from "next/server"
-import { GetObjectCommand } from "@aws-sdk/client-s3"
+import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
 import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { withAuth } from "@/lib/api-auth"
 import { getCollection } from "@/lib/mongodb"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { normalizeProofAttachments } from "@/lib/payment-proofs"
 import { getS3Bucket, getS3Client, parseStoredProofReferenceToObjectKey } from "@/lib/s3"
+import {
+  EmptyOrMissingProofError,
+  isS3NotFound,
+  proofObjectHttpError,
+} from "@/lib/assert-payment-proofs"
 
 type PaymentDoc = {
   _id: import("mongodb").ObjectId
@@ -54,6 +59,29 @@ export const GET = withAuth(async (req: NextRequest, user, { params }: { params:
 
   const bucket = getS3Bucket()
   const client = getS3Client()
+
+  let size = 0
+  try {
+    const head = await client.send(
+      new HeadObjectCommand({
+        Bucket: bucket,
+        Key: objectKey,
+      })
+    )
+    size = head.ContentLength ?? 0
+  } catch (error) {
+    if (isS3NotFound(error)) {
+      const mapped = proofObjectHttpError(new EmptyOrMissingProofError(attachment.filename, objectKey))
+      return NextResponse.json(mapped, { status: 400 })
+    }
+    throw error
+  }
+
+  if (size <= 0) {
+    const mapped = proofObjectHttpError(new EmptyOrMissingProofError(attachment.filename, objectKey))
+    return NextResponse.json(mapped, { status: 400 })
+  }
+
   const command = new GetObjectCommand({
     Bucket: bucket,
     Key: objectKey,
@@ -65,5 +93,6 @@ export const GET = withAuth(async (req: NextRequest, user, { params }: { params:
     objectKey: attachment.objectKey,
     filename: attachment.filename,
     contentType: attachment.contentType,
+    size,
   })
 })

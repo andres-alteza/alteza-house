@@ -12,20 +12,64 @@ import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
 import { CheckCircle, FileText, Upload, Download, ChevronDown, Save, Loader2, X } from "lucide-react"
 import { toast } from "sonner"
+import { PaymentProofPreview } from "@/components/payment-proof-preview"
+import {
+  PAYMENT_PROOF_FILE_ACCEPT,
+  getProofFileIssue,
+  inferProofContentType,
+} from "@/lib/payment-proof-constraints"
 
-const PDF_CONTENT_TYPE = "application/pdf"
-const PDF_FILE_EXTENSION = ".pdf"
-
-function inferContentTypeFromFileName(fileName: string) {
-  return fileName.toLowerCase().endsWith(PDF_FILE_EXTENSION) ? PDF_CONTENT_TYPE : ""
+function proofIssueMessage(
+  issue: "type" | "empty" | "too-large",
+  t: (key: string) => string
+) {
+  if (issue === "empty") return t("payments.emptyFileError")
+  if (issue === "too-large") return t("payments.fileTooLargeError")
+  return t("payments.invalidProofError")
 }
 
-function isAllowedProofFile(file: File) {
-  const normalizedType = file.type.toLowerCase()
-  if (normalizedType.startsWith("image/") || normalizedType === PDF_CONTENT_TYPE) {
-    return true
+function messageForProofError(error: unknown, t: (key: string) => string) {
+  const record = error as { code?: string; message?: string; filename?: string } | null
+  if (record?.code === "empty_proof" || record?.message === "empty-proof") {
+    if (record.filename) {
+      return t("payments.confirmEmptyProofError").replace("{filename}", record.filename)
+    }
+    return t("payments.emptyFileError")
   }
-  return file.name.toLowerCase().endsWith(PDF_FILE_EXTENSION)
+  if (record?.code === "invalid_proof_type" || record?.message === "invalid-proof") {
+    return t("payments.invalidProofError")
+  }
+  if (record?.code === "too_large" || record?.message === "too-large-proof") {
+    return t("payments.fileTooLargeError")
+  }
+  return t("payments.uploadError")
+}
+
+async function readProofFileForUpload(file: File) {
+  const bytes = await file.arrayBuffer()
+  if (bytes.byteLength === 0) {
+    const error = new Error("empty-proof") as Error & { code: string }
+    error.code = "empty_proof"
+    throw error
+  }
+  const contentType = inferProofContentType(file.name, file.type)
+  if (!contentType) {
+    const error = new Error("invalid-proof") as Error & { code: string }
+    error.code = "invalid_proof_type"
+    throw error
+  }
+  const issue = getProofFileIssue({ name: file.name, type: contentType, size: bytes.byteLength })
+  if (issue === "too-large") {
+    const error = new Error("too-large-proof") as Error & { code: string }
+    error.code = "too_large"
+    throw error
+  }
+  return {
+    contentType,
+    size: bytes.byteLength,
+    body: new Blob([bytes], { type: contentType }),
+    filename: file.name,
+  }
 }
 
 type ContractWindow = {
@@ -82,14 +126,12 @@ async function uploadProofFiles(params: {
   const uploaded: PaymentProofAttachment[] = []
 
   for (const file of params.files) {
-    const contentType = file.type || inferContentTypeFromFileName(file.name)
-    if (!contentType) {
-      throw new Error("invalid-proof")
-    }
+    const prepared = await readProofFileForUpload(file)
 
     const presign = await api.presignPaymentProofUpload({
-      filename: file.name,
-      contentType,
+      filename: prepared.filename,
+      contentType: prepared.contentType,
+      size: prepared.size,
       tenantId: params.tenantId,
       paymentId: params.paymentId,
       year: params.year,
@@ -99,7 +141,7 @@ async function uploadProofFiles(params: {
     const uploadResponse = await fetch(presign.uploadUrl, {
       method: "PUT",
       headers: { "Content-Type": presign.contentType },
-      body: file,
+      body: prepared.body,
     })
 
     if (!uploadResponse.ok) {
@@ -108,9 +150,10 @@ async function uploadProofFiles(params: {
 
     uploaded.push({
       objectKey: presign.objectKey,
-      filename: file.name,
+      filename: prepared.filename,
       contentType: presign.contentType,
       uploadedAt: new Date().toISOString(),
+      size: prepared.size,
     })
   }
 
@@ -257,7 +300,14 @@ export function PaymentsPage() {
       toast.success(t("payments.confirmedSuccess"))
     } catch (err) {
       console.error("Confirm error:", err)
-      toast.error(t("payments.confirmError"))
+      const record = err as { code?: string; filename?: string } | null
+      if (record?.code === "empty_proof") {
+        toast.error(
+          t("payments.confirmEmptyProofError").replace("{filename}", record.filename || "")
+        )
+      } else {
+        toast.error(t("payments.confirmError"))
+      }
     } finally {
       setConfirmingPaymentId(null)
     }
@@ -300,21 +350,23 @@ export function PaymentsPage() {
 
   const collectAllowedFiles = (
     fileList: FileList | null,
-    onInvalid: () => void
+    onInvalid: (issue: "type" | "empty" | "too-large") => void
   ): File[] | null => {
     const files = Array.from(fileList || [])
     if (files.length === 0) return []
-    if (files.some((file) => !isAllowedProofFile(file))) {
-      onInvalid()
+    const invalid = files.find((file) => getProofFileIssue(file))
+    if (invalid) {
+      onInvalid(getProofFileIssue(invalid) || "type")
       return null
     }
     return files
   }
 
   const handleProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = collectAllowedFiles(event.target.files, () => {
-      setUploadError(t("payments.invalidProofError"))
-      toast.error(t("payments.invalidProofError"))
+    const files = collectAllowedFiles(event.target.files, (issue) => {
+      const message = proofIssueMessage(issue, t)
+      setUploadError(message)
+      toast.error(message)
       setProofFiles([])
       event.target.value = ""
     })
@@ -325,9 +377,10 @@ export function PaymentsPage() {
   }
 
   const handleDetailProofFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const files = collectAllowedFiles(event.target.files, () => {
-      setDetailError(t("payments.invalidProofError"))
-      toast.error(t("payments.invalidProofError"))
+    const files = collectAllowedFiles(event.target.files, (issue) => {
+      const message = proofIssueMessage(issue, t)
+      setDetailError(message)
+      toast.error(message)
       setDetailProofFiles([])
       event.target.value = ""
     })
@@ -402,8 +455,9 @@ export function PaymentsPage() {
       toast.success(t("payments.uploadSuccess"))
     } catch (error) {
       console.error("Upload payment proof error:", error)
-      setUploadError(t("payments.uploadError"))
-      toast.error(t("payments.uploadError"))
+      const message = messageForProofError(error, t)
+      setUploadError(message)
+      toast.error(message)
       setUploading(false)
     }
   }
@@ -452,8 +506,18 @@ export function PaymentsPage() {
       closeDetailModal()
     } catch (error) {
       console.error("Update payment error:", error)
-      setDetailError(t("payments.updateError"))
-      toast.error(t("payments.updateError"))
+      const code = (error as { code?: string; message?: string } | null)?.code
+      const messageText = (error as { message?: string } | null)?.message
+      const isProofIssue =
+        code === "empty_proof" ||
+        code === "invalid_proof_type" ||
+        code === "too_large" ||
+        messageText === "empty-proof" ||
+        messageText === "invalid-proof" ||
+        messageText === "too-large-proof"
+      const message = isProofIssue ? messageForProofError(error, t) : t("payments.updateError")
+      setDetailError(message)
+      toast.error(message)
       setSavingDetail(false)
     }
   }
@@ -470,7 +534,10 @@ export function PaymentsPage() {
       toast.success(t("general.openedSuccess"))
     } catch (error) {
       console.error("Open payment proof error:", error)
-      toast.error(t("payments.openProofError"))
+      const record = error as { code?: string } | null
+      toast.error(
+        record?.code === "empty_proof" ? t("payments.emptyProofFile") : t("payments.openProofError")
+      )
     } finally {
       setOpeningProofKey(null)
     }
@@ -691,8 +758,7 @@ export function PaymentsPage() {
               />
             </div>
 
-            {selectedPayment.state !== "approved" && (
-              <div className="border-t border-border pt-4">
+            <div className="border-t border-border pt-4">
                 <p className="mb-2 text-sm font-medium text-card-foreground">
                   {t("payments.proofFiles")}
                 </p>
@@ -703,39 +769,49 @@ export function PaymentsPage() {
                     draftAttachments.map((attachment) => (
                       <div
                         key={attachment.objectKey}
-                        className="flex items-center justify-between gap-2 rounded-md border border-border bg-card px-3 py-2"
+                        className="flex flex-col gap-2 rounded-md border border-border bg-card px-3 py-2"
                       >
-                        <div className="flex min-w-0 items-center gap-2">
-                          <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
-                          <span className="truncate text-sm text-card-foreground">
-                            {attachment.filename}
-                          </span>
-                        </div>
-                        <div className="flex shrink-0 items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={() =>
-                              void openProofFile(selectedPayment.id, attachment.objectKey)
-                            }
-                            disabled={openingProofKey === attachment.objectKey}
-                            className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
-                          >
-                            <Download className="h-3.5 w-3.5" />
-                            {openingProofKey === attachment.objectKey
-                              ? t("general.loading")
-                              : t("general.download")}
-                          </button>
-                          {canTenantEditSelectedPayment && (
+                        {isAdmin ||
+                        selectedPayment.state === "approved" ||
+                        attachment.size === 0 ? (
+                          <PaymentProofPreview
+                            paymentId={selectedPayment.id}
+                            attachment={attachment}
+                          />
+                        ) : null}
+                        <div className="flex items-center justify-between gap-2">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
+                            <span className="truncate text-sm text-card-foreground">
+                              {attachment.filename}
+                            </span>
+                          </div>
+                          <div className="flex shrink-0 items-center gap-1">
                             <button
                               type="button"
-                              onClick={() => removeDraftAttachment(attachment.objectKey)}
-                              disabled={savingDetail}
-                              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                              onClick={() =>
+                                void openProofFile(selectedPayment.id, attachment.objectKey)
+                              }
+                              disabled={openingProofKey === attachment.objectKey}
+                              className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-card-foreground transition-colors hover:bg-muted disabled:opacity-50"
                             >
-                              <X className="h-3.5 w-3.5" />
-                              {t("payments.removeProof")}
+                              <Download className="h-3.5 w-3.5" />
+                              {openingProofKey === attachment.objectKey
+                                ? t("general.loading")
+                                : t("general.download")}
                             </button>
-                          )}
+                            {canTenantEditSelectedPayment && (
+                              <button
+                                type="button"
+                                onClick={() => removeDraftAttachment(attachment.objectKey)}
+                                disabled={savingDetail}
+                                className="inline-flex items-center gap-1 rounded-md border border-border px-2 py-1 text-xs font-medium text-destructive transition-colors hover:bg-destructive/10 disabled:opacity-50"
+                              >
+                                <X className="h-3.5 w-3.5" />
+                                {t("payments.removeProof")}
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ))
@@ -746,7 +822,7 @@ export function PaymentsPage() {
                       <input
                         ref={detailProofInputRef}
                         type="file"
-                        accept=".pdf,image/*"
+                        accept={PAYMENT_PROOF_FILE_ACCEPT}
                         multiple
                         onChange={handleDetailProofFileChange}
                         className="hidden"
@@ -764,7 +840,6 @@ export function PaymentsPage() {
                   )}
                 </div>
               </div>
-            )}
 
             {detailError && <p className="text-sm text-destructive">{detailError}</p>}
             <div className="flex flex-wrap items-center gap-2 border-t border-border pt-4">
@@ -844,7 +919,7 @@ export function PaymentsPage() {
             <input
               ref={proofInputRef}
               type="file"
-              accept=".pdf,image/*"
+              accept={PAYMENT_PROOF_FILE_ACCEPT}
               multiple
               onChange={handleProofFileChange}
               className="hidden"
