@@ -230,6 +230,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.autoLabel": "automático",
     "payments.openProofError": "No se pudo abrir el comprobante. Intenta de nuevo.",
     "payments.invalidProofError": "Solo se permiten archivos PDF o imagenes.",
+    "payments.invalidProofKeyError": "La referencia del comprobante no es válida. Sube el archivo de nuevo.",
     "payments.proofRequiredError": "Selecciona al menos un archivo PDF o imagen.",
     "payments.missingContractError":
       "No se encontro un contrato de inquilino para registrar este pago.",
@@ -238,6 +239,8 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.atLeastOneProofError": "El pago debe conservar al menos un comprobante.",
     "payments.emptyFileError":
       "El archivo está vacío. Elige otra foto e inténtalo de nuevo.",
+    "payments.unreadableFileError":
+      "No pudimos leer esta imagen. Guárdala en tu galería o tómale captura de pantalla y súbela de nuevo.",
     "payments.fileTooLargeError": "El archivo supera el límite de 10 MB.",
     "payments.emptyProofFile": "Archivo vacío o ausente",
     "payments.confirmEmptyProofError":
@@ -570,6 +573,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.autoLabel": "automatic",
     "payments.openProofError": "Could not open payment proof. Please try again.",
     "payments.invalidProofError": "Only PDF files or images are allowed.",
+    "payments.invalidProofKeyError": "This payment proof reference is not allowed. Upload the file again.",
     "payments.proofRequiredError": "Please select at least one PDF or image file.",
     "payments.missingContractError":
       "Unable to find a tenant contract to register this payment.",
@@ -577,6 +581,8 @@ const translations: Record<Locale, Record<string, string>> = {
       "This month already has an approved payment and cannot be changed.",
     "payments.atLeastOneProofError": "The payment must keep at least one proof.",
     "payments.emptyFileError": "This file is empty. Choose another photo and try again.",
+    "payments.unreadableFileError":
+      "We couldn't read this image. Save it to your gallery or take a screenshot and upload it again.",
     "payments.fileTooLargeError": "This file is larger than the 10 MB limit.",
     "payments.emptyProofFile": "Empty or missing file",
     "payments.confirmEmptyProofError":

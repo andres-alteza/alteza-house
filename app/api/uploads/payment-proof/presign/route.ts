@@ -1,17 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { PutObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { withAuth } from "@/lib/api-auth"
 import { parseJson, badRequest } from "@/lib/api-helpers"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { getCollection } from "@/lib/mongodb"
 import { presignPaymentProofSchema } from "@/lib/schemas/upload"
 import { buildProofObjectKey, getS3Bucket, getS3Client } from "@/lib/s3"
-import {
-  inferProofContentType,
-  isProofSizeAllowed,
-  paymentProofPutObjectInput,
-} from "@/lib/payment-proof-constraints"
+import { inferProofContentType, isProofSizeAllowed } from "@/lib/payment-proof-constraints"
+import { signPaymentProofPut } from "@/lib/sign-payment-proof-put"
 
 type TenantDoc = {
   _id: import("mongodb").ObjectId
@@ -72,18 +67,12 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   }
 
   const objectKey = buildProofObjectKey(filename, tenantId, paymentId, year, month)
-  const bucket = getS3Bucket()
-  const client = getS3Client()
-  const command = new PutObjectCommand(
-    paymentProofPutObjectInput({
-      bucket,
-      objectKey,
-      contentType: normalizedContentType,
-      size,
-    })
-  )
-
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 })
+  const uploadUrl = await signPaymentProofPut(getS3Client(), {
+    bucket: getS3Bucket(),
+    objectKey,
+    contentType: normalizedContentType,
+    size,
+  })
 
   return NextResponse.json({
     uploadUrl,

@@ -16,60 +16,26 @@ import { PaymentProofPreview } from "@/components/payment-proof-preview"
 import {
   PAYMENT_PROOF_FILE_ACCEPT,
   getProofFileIssue,
-  inferProofContentType,
 } from "@/lib/payment-proof-constraints"
+import { i18nKeyForProofClientError, readProofFileForUpload } from "@/lib/read-proof-file"
 
 function proofIssueMessage(
   issue: "type" | "empty" | "too-large",
   t: (key: string) => string
 ) {
-  if (issue === "empty") return t("payments.emptyFileError")
+  if (issue === "empty") return t("payments.unreadableFileError")
   if (issue === "too-large") return t("payments.fileTooLargeError")
   return t("payments.invalidProofError")
 }
 
 function messageForProofError(error: unknown, t: (key: string) => string) {
-  const record = error as { code?: string; message?: string; filename?: string } | null
-  if (record?.code === "empty_proof" || record?.message === "empty-proof") {
-    if (record.filename) {
-      return t("payments.confirmEmptyProofError").replace("{filename}", record.filename)
-    }
-    return t("payments.emptyFileError")
+  const record = error as { code?: string; filename?: string } | null
+  if (record?.code === "empty_proof" && record.filename) {
+    return t("payments.confirmEmptyProofError").replace("{filename}", record.filename)
   }
-  if (record?.code === "invalid_proof_type" || record?.message === "invalid-proof") {
-    return t("payments.invalidProofError")
-  }
-  if (record?.code === "too_large" || record?.message === "too-large-proof") {
-    return t("payments.fileTooLargeError")
-  }
+  const key = i18nKeyForProofClientError(error)
+  if (key) return t(key)
   return t("payments.uploadError")
-}
-
-async function readProofFileForUpload(file: File) {
-  const bytes = await file.arrayBuffer()
-  if (bytes.byteLength === 0) {
-    const error = new Error("empty-proof") as Error & { code: string }
-    error.code = "empty_proof"
-    throw error
-  }
-  const contentType = inferProofContentType(file.name, file.type)
-  if (!contentType) {
-    const error = new Error("invalid-proof") as Error & { code: string }
-    error.code = "invalid_proof_type"
-    throw error
-  }
-  const issue = getProofFileIssue({ name: file.name, type: contentType, size: bytes.byteLength })
-  if (issue === "too-large") {
-    const error = new Error("too-large-proof") as Error & { code: string }
-    error.code = "too_large"
-    throw error
-  }
-  return {
-    contentType,
-    size: bytes.byteLength,
-    body: new Blob([bytes], { type: contentType }),
-    filename: file.name,
-  }
 }
 
 type ContractWindow = {
@@ -506,15 +472,7 @@ export function PaymentsPage() {
       closeDetailModal()
     } catch (error) {
       console.error("Update payment error:", error)
-      const code = (error as { code?: string; message?: string } | null)?.code
-      const messageText = (error as { message?: string } | null)?.message
-      const isProofIssue =
-        code === "empty_proof" ||
-        code === "invalid_proof_type" ||
-        code === "too_large" ||
-        messageText === "empty-proof" ||
-        messageText === "invalid-proof" ||
-        messageText === "too-large-proof"
+      const isProofIssue = Boolean(i18nKeyForProofClientError(error))
       const message = isProofIssue ? messageForProofError(error, t) : t("payments.updateError")
       setDetailError(message)
       toast.error(message)
