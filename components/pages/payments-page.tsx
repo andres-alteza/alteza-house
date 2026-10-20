@@ -23,7 +23,7 @@ function proofIssueMessage(
   issue: "type" | "empty" | "too-large",
   t: (key: string) => string
 ) {
-  if (issue === "empty") return t("payments.emptyFileError")
+  if (issue === "empty") return t("payments.unreadableFileError")
   if (issue === "too-large") return t("payments.fileTooLargeError")
   return t("payments.invalidProofError")
 }
