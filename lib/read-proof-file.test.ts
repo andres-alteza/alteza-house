@@ -52,6 +52,10 @@ test("UI maps unreadable_file from the error code, not the message text", () => 
     "payments.unreadableFileError"
   )
   assert.equal(i18nKeyForProofClientError({ message: "unreadable-file" }), null)
+  assert.equal(
+    i18nKeyForProofClientError({ code: "invalid_proof_key", message: "ignored" }),
+    "payments.invalidProofKeyError"
+  )
 
   const es = getTranslations("es")("payments.unreadableFileError")
   const en = getTranslations("en")("payments.unreadableFileError")

@@ -21,6 +21,7 @@ export function i18nKeyForProofClientError(error: unknown): string | null {
   if (code === UNREADABLE_FILE_CODE) return "payments.unreadableFileError"
   if (code === "empty_proof") return "payments.emptyFileError"
   if (code === "invalid_proof_type") return "payments.invalidProofError"
+  if (code === "invalid_proof_key") return "payments.invalidProofKeyError"
   if (code === "too_large") return "payments.fileTooLargeError"
   return null
 }

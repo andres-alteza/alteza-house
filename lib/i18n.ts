@@ -230,6 +230,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.autoLabel": "automático",
     "payments.openProofError": "No se pudo abrir el comprobante. Intenta de nuevo.",
     "payments.invalidProofError": "Solo se permiten archivos PDF o imagenes.",
+    "payments.invalidProofKeyError": "La referencia del comprobante no es válida. Sube el archivo de nuevo.",
     "payments.proofRequiredError": "Selecciona al menos un archivo PDF o imagen.",
     "payments.missingContractError":
       "No se encontro un contrato de inquilino para registrar este pago.",
@@ -572,6 +573,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.autoLabel": "automatic",
     "payments.openProofError": "Could not open payment proof. Please try again.",
     "payments.invalidProofError": "Only PDF files or images are allowed.",
+    "payments.invalidProofKeyError": "This payment proof reference is not allowed. Upload the file again.",
     "payments.proofRequiredError": "Please select at least one PDF or image file.",
     "payments.missingContractError":
       "Unable to find a tenant contract to register this payment.",
