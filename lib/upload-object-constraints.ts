@@ -3,8 +3,6 @@ export const CONTRACT_MAX_BYTES = 20 * 1024 * 1024
 
 export const PDF_CONTENT_TYPE = "application/pdf"
 
-export const SIGNABLE_UPLOAD_HEADERS = new Set(["content-length", "content-type"])
-
 export type UploadAttachmentRef = {
   objectKey: string
   filename: string

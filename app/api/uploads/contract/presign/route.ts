@@ -1,18 +1,12 @@
 import { NextRequest, NextResponse } from "next/server"
-import { PutObjectCommand } from "@aws-sdk/client-s3"
-import { getSignedUrl } from "@aws-sdk/s3-request-presigner"
 import { withAuth } from "@/lib/api-auth"
 import { parseJson, badRequest } from "@/lib/api-helpers"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { getCollection } from "@/lib/mongodb"
 import { presignContractUploadSchema } from "@/lib/schemas/upload"
 import { buildContractObjectKey, getS3Bucket, getS3Client } from "@/lib/s3"
-import {
-  contractPutObjectInput,
-  isContractSizeAllowed,
-  normalizeContractContentType,
-} from "@/lib/contract-pdf-constraints"
-import { SIGNABLE_UPLOAD_HEADERS } from "@/lib/upload-object-constraints"
+import { isContractSizeAllowed, normalizeContractContentType } from "@/lib/contract-pdf-constraints"
+import { signUploadPut } from "@/lib/sign-upload-put"
 
 type ContractDoc = {
   _id: import("mongodb").ObjectId
@@ -76,19 +70,11 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   }
 
   const objectKey = buildContractObjectKey(contract.tenantId, contract._id.toString(), kind)
-  const bucket = getS3Bucket()
-  const client = getS3Client()
-  const command = new PutObjectCommand(
-    contractPutObjectInput({
-      bucket,
-      objectKey,
-      contentType: normalizedContentType,
-      size,
-    })
-  )
-  const uploadUrl = await getSignedUrl(client, command, {
-    expiresIn: 60 * 5,
-    signableHeaders: SIGNABLE_UPLOAD_HEADERS,
+  const uploadUrl = await signUploadPut(getS3Client(), {
+    bucket: getS3Bucket(),
+    objectKey,
+    contentType: normalizedContentType,
+    size,
   })
 
   return NextResponse.json({

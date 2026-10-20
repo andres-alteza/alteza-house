@@ -6,7 +6,7 @@ import { getCollection } from "@/lib/mongodb"
 import { presignPaymentProofSchema } from "@/lib/schemas/upload"
 import { buildProofObjectKey, getS3Bucket, getS3Client } from "@/lib/s3"
 import { inferProofContentType, isProofSizeAllowed } from "@/lib/payment-proof-constraints"
-import { signPaymentProofPut } from "@/lib/sign-payment-proof-put"
+import { signUploadPut } from "@/lib/sign-upload-put"
 
 type TenantDoc = {
   _id: import("mongodb").ObjectId
@@ -67,7 +67,7 @@ export const POST = withAuth(async (req: NextRequest, user) => {
   }
 
   const objectKey = buildProofObjectKey(filename, tenantId, paymentId, year, month)
-  const uploadUrl = await signPaymentProofPut(getS3Client(), {
+  const uploadUrl = await signUploadPut(getS3Client(), {
     bucket: getS3Bucket(),
     objectKey,
     contentType: normalizedContentType,

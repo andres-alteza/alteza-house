@@ -18,6 +18,7 @@ import {
   isAllowedContractContentType,
   sniffContractMagicBytes,
 } from "@/lib/contract-pdf-constraints"
+import { UNREADABLE_FILE_CODE } from "@/lib/read-proof-file"
 
 const PDF_FILE_EXTENSION = ".pdf"
 
@@ -28,7 +29,7 @@ function isPdfFile(file: File) {
 function contractFileIssueMessage(code: string, t: (key: string) => string) {
   if (code === "empty_contract") return t("contracts.emptyFileError")
   if (code === "too_large") return t("contracts.fileTooLargeError")
-  if (code === "unreadable_contract_file") return t("contracts.unreadableFileError")
+  if (code === UNREADABLE_FILE_CODE) return t("contracts.unreadableFileError")
   if (code === "invalid_contract_type") return t("contracts.invalidPdfError")
   return t("contracts.uploadError")
 }
@@ -50,7 +51,7 @@ async function readContractPdfForUpload(file: File) {
   try {
     bytes = await file.arrayBuffer()
   } catch {
-    throwContractFileError("unreadable_contract_file", "unreadable-contract")
+    throwContractFileError(UNREADABLE_FILE_CODE, "unreadable-file")
   }
 
   if (!Number.isFinite(bytes.byteLength) || bytes.byteLength <= 0) {
