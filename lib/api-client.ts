@@ -105,6 +105,7 @@ type PresignContractUploadRequest = {
   contractId: string
   filename: string
   contentType: string
+  size: number
   kind: "draft" | "signed"
 }
 

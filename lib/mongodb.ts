@@ -57,9 +57,23 @@ export async function getDb(): Promise<Db> {
   return mongoCache.db
 }
 
+type CollectionGetter = <TSchema extends Document = Document>(
+  name: string
+) => Promise<Collection<TSchema>>
+
+const defaultGetCollection: CollectionGetter = async (name) => {
+  const db = await getDb()
+  return db.collection(name)
+}
+
+let collectionGetter: CollectionGetter = defaultGetCollection
+
+export function setCollectionGetterForTests(getter: CollectionGetter | null) {
+  collectionGetter = getter || defaultGetCollection
+}
+
 export async function getCollection<TSchema extends Document = Document>(
   name: string
 ): Promise<Collection<TSchema>> {
-  const db = await getDb()
-  return db.collection<TSchema>(name)
+  return collectionGetter<TSchema>(name)
 }

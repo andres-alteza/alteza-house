@@ -5,6 +5,8 @@ import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { parseJson } from "@/lib/api-helpers"
 import { updateContractSchema } from "@/lib/schemas/contract"
 import { serializeContract } from "@/lib/serializers/contract"
+import { contractPdfHttpError } from "@/lib/assert-contract-pdfs"
+import { verifyContractPdfsBeforeSave } from "@/lib/save-contract-pdfs"
 
 export const PUT = withAuth(
   async (req: NextRequest, _user, { params }: { params: Promise<{ id: string }> }) => {
@@ -39,9 +41,29 @@ export const PUT = withAuth(
     )
   }
 
+  const updateFields: Record<string, unknown> = { ...parsed.data, updatedAt: new Date() }
+  const contractId = existing._id.toString()
+  const existingTenantId = String(existing.tenantId)
+
+  try {
+    const verifiedPdfs = await verifyContractPdfsBeforeSave({
+      existingTenantId,
+      requestedTenantId: parsed.data.tenantId,
+      contractId,
+      pdfUrl: parsed.data.pdfUrl,
+      signedPdfUrl: parsed.data.signedPdfUrl,
+    })
+    if (verifiedPdfs.pdfUrl) updateFields.pdfUrl = verifiedPdfs.pdfUrl
+    if (verifiedPdfs.signedPdfUrl) updateFields.signedPdfUrl = verifiedPdfs.signedPdfUrl
+  } catch (error) {
+    const mapped = contractPdfHttpError(error)
+    if (mapped) return NextResponse.json(mapped, { status: 400 })
+    throw error
+  }
+
   const updated = await col.findOneAndUpdate(
     { _id: idParsed.value },
-    { $set: { ...parsed.data, updatedAt: new Date() } },
+    { $set: updateFields },
     { returnDocument: "after" }
   )
   if (!updated) {

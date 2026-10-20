@@ -1,4 +1,16 @@
-export const PAYMENT_PROOF_MAX_BYTES = 10 * 1024 * 1024
+import {
+  PAYMENT_MAX_BYTES,
+  isUnsafeObjectKey,
+  normalizeS3Prefix,
+  putObjectInput,
+  verifyUploadedObjects,
+  type UploadObjectLookup,
+  type UploadObjectRules,
+} from "@/lib/upload-object-constraints"
+
+export { PAYMENT_MAX_BYTES, normalizeS3Prefix }
+
+export const PAYMENT_PROOF_MAX_BYTES = PAYMENT_MAX_BYTES
 
 export const PAYMENT_PROOF_PDF_CONTENT_TYPE = "application/pdf"
 
@@ -110,7 +122,7 @@ export function inferProofContentType(filename: string, contentType?: string) {
 }
 
 export function isProofSizeAllowed(size: number) {
-  return Number.isInteger(size) && size > 0 && size <= PAYMENT_PROOF_MAX_BYTES
+  return Number.isInteger(size) && size > 0 && size <= PAYMENT_MAX_BYTES
 }
 
 export function getProofFileIssue(file: { name: string; type: string; size: number }): ProofFileIssue | null {
@@ -118,10 +130,6 @@ export function getProofFileIssue(file: { name: string; type: string; size: numb
   if (file.size > PAYMENT_PROOF_MAX_BYTES) return "too-large"
   if (!inferProofContentType(file.name, file.type)) return "type"
   return null
-}
-
-export function normalizeS3Prefix(s3Prefix = "") {
-  return s3Prefix.trim().replace(/^\/+|\/+$/g, "")
 }
 
 export function proofObjectKeyPrefix(tenantId: string, s3Prefix = "") {
@@ -132,12 +140,7 @@ export function proofObjectKeyPrefix(tenantId: string, s3Prefix = "") {
 }
 
 export function isUnsafeProofObjectKey(objectKey: string) {
-  const key = objectKey.trim()
-  if (!key) return true
-  if (key.startsWith("/")) return true
-  if (key.includes("..")) return true
-  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(key)) return true
-  return false
+  return isUnsafeObjectKey(objectKey)
 }
 
 export function isAllowedProofObjectKey(objectKey: string, tenantId: string, s3Prefix = "") {
@@ -231,12 +234,7 @@ export function paymentProofPutObjectInput(params: {
   contentType: string
   size: number
 }) {
-  return {
-    Bucket: params.bucket,
-    Key: params.objectKey,
-    ContentType: params.contentType,
-    ContentLength: params.size,
-  }
+  return putObjectInput(params)
 }
 
 export class EmptyOrMissingProofError extends Error {
@@ -282,23 +280,29 @@ export type ProofAttachmentRef = {
   size?: number
 }
 
-export type ProofObjectLookup = {
-  headObject: (objectKey: string) => Promise<{ ContentLength?: number; ContentType?: string } | null>
-  getObjectPrefix: (objectKey: string) => Promise<Uint8Array | null>
-}
+export type ProofObjectLookup = UploadObjectLookup
 
 export type VerifyProofObjectsContext = {
   tenantId: string
   s3Prefix?: string
 }
 
-function resolvedContentType(headContentType: string | undefined, magic: ProofMagicKind) {
-  const fromHead = normalizeProofContentType(headContentType || "")
-  if (fromHead && isAllowedProofContentType(fromHead)) {
-    if (!claimedProofTypeMatchesMagic(fromHead, magic)) return ""
-    return fromHead
-  }
-  return contentTypeForProofMagic(magic)
+export const PAYMENT_PROOF_UPLOAD_RULES: UploadObjectRules<VerifyProofObjectsContext> = {
+  maxBytes: PAYMENT_MAX_BYTES,
+  requireAtLeastOne: true,
+  emptyListFilename: "proof",
+  normalizeContentType: normalizeProofContentType,
+  isAllowedContentType: isAllowedProofContentType,
+  sniffMagic: (bytes) => sniffProofMagicBytes(bytes),
+  contentTypeForMagic: (magic) => contentTypeForProofMagic(magic as ProofMagicKind),
+  claimedTypeMatchesMagic: (contentType, magic) =>
+    claimedProofTypeMatchesMagic(contentType, magic as ProofMagicKind),
+  isAllowedObjectKey: (objectKey, context) =>
+    isAllowedProofObjectKey(objectKey, context.tenantId, context.s3Prefix ?? ""),
+  isStoredSizeAllowed: (size) => Number.isFinite(size) && size > 0,
+  EmptyError: EmptyOrMissingProofError,
+  TypeError: InvalidProofTypeError,
+  KeyError: InvalidProofKeyError,
 }
 
 export async function verifyProofObjects(
@@ -306,50 +310,7 @@ export async function verifyProofObjects(
   lookup: ProofObjectLookup,
   context: VerifyProofObjectsContext
 ): Promise<Array<ProofAttachmentRef & { size: number }>> {
-  const verified: Array<ProofAttachmentRef & { size: number }> = []
-  const s3Prefix = context.s3Prefix ?? ""
-
-  if (attachments.length === 0) {
-    throw new EmptyOrMissingProofError("proof", "")
-  }
-
-  for (const attachment of attachments) {
-    const objectKey = attachment.objectKey.trim()
-    const filename = attachment.filename.trim() || objectKey || "proof"
-    if (!isAllowedProofObjectKey(objectKey, context.tenantId, s3Prefix)) {
-      throw new InvalidProofKeyError(filename, objectKey)
-    }
-
-    const head = await lookup.headObject(objectKey)
-    if (!head) {
-      throw new EmptyOrMissingProofError(filename, objectKey)
-    }
-
-    const size = head.ContentLength ?? 0
-    if (!Number.isFinite(size) || size <= 0) {
-      throw new EmptyOrMissingProofError(filename, objectKey)
-    }
-
-    const prefix = await lookup.getObjectPrefix(objectKey)
-    if (!prefix) {
-      throw new EmptyOrMissingProofError(filename, objectKey)
-    }
-    const magic = sniffProofMagicBytes(prefix)
-    const contentType = resolvedContentType(head.ContentType, magic)
-    if (!contentType) {
-      throw new InvalidProofTypeError(filename, objectKey)
-    }
-
-    verified.push({
-      ...attachment,
-      objectKey,
-      filename,
-      contentType,
-      size,
-    })
-  }
-
-  return verified
+  return verifyUploadedObjects(attachments, lookup, context, PAYMENT_PROOF_UPLOAD_RULES)
 }
 
 export function proofObjectHttpError(error: unknown) {
