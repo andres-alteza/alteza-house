@@ -1,27 +1,46 @@
 import { S3Client } from "@aws-sdk/client-s3"
 
-const AWS_REGION = process.env.AWS_REGION
-const S3_BUCKET = process.env.S3_BUCKET
-const S3_PREFIX = process.env.S3_PREFIX?.trim()
-
 let client: S3Client | null = null
 
 function getClient() {
   if (client) return client
 
-  if (!AWS_REGION) {
+  const region = process.env.AWS_REGION
+  if (!region) {
     throw new Error("Missing AWS_REGION environment variable")
   }
 
-  client = new S3Client({ region: AWS_REGION })
+  const endpoint = process.env.S3_ENDPOINT?.trim()
+  const accessKeyId = process.env.AWS_ACCESS_KEY_ID
+  const secretAccessKey = process.env.AWS_SECRET_ACCESS_KEY
+  client = new S3Client({
+    region,
+    ...(endpoint
+      ? {
+          endpoint,
+          forcePathStyle: true,
+          ...(accessKeyId && secretAccessKey ? { credentials: { accessKeyId, secretAccessKey } } : {}),
+          requestChecksumCalculation: "WHEN_REQUIRED",
+          responseChecksumValidation: "WHEN_REQUIRED",
+        }
+      : {}),
+  })
   return client
 }
 
+export function resetS3Client() {
+  if (client) {
+    client.destroy()
+    client = null
+  }
+}
+
 export function getS3Bucket() {
-  if (!S3_BUCKET) {
+  const bucket = process.env.S3_BUCKET
+  if (!bucket) {
     throw new Error("Missing S3_BUCKET environment variable")
   }
-  return S3_BUCKET
+  return bucket
 }
 
 export function getS3Client() {
@@ -29,7 +48,8 @@ export function getS3Client() {
 }
 
 export function getS3Prefix() {
-  return S3_PREFIX ? S3_PREFIX.replace(/^\/+|\/+$/g, "") : ""
+  const prefix = process.env.S3_PREFIX?.trim()
+  return prefix ? prefix.replace(/^\/+|\/+$/g, "") : ""
 }
 
 function getRootPrefix() {

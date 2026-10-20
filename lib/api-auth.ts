@@ -8,7 +8,7 @@ export interface AuthenticatedUser {
   role: "admin" | "tenant"
 }
 
-export async function authenticateRequest(
+async function defaultAuthenticateRequest(
   req: NextRequest
 ): Promise<{ user: AuthenticatedUser } | { error: NextResponse }> {
   const authHeader = req.headers.get("authorization")
@@ -32,6 +32,20 @@ export async function authenticateRequest(
       role: isAdmin ? "admin" : "tenant",
     },
   }
+}
+
+let authenticateRequestImpl = defaultAuthenticateRequest
+
+export function setAuthenticateRequestForTests(
+  impl: typeof defaultAuthenticateRequest | null
+) {
+  authenticateRequestImpl = impl || defaultAuthenticateRequest
+}
+
+export async function authenticateRequest(
+  req: NextRequest
+): Promise<{ user: AuthenticatedUser } | { error: NextResponse }> {
+  return authenticateRequestImpl(req)
 }
 
 export function requireAdmin(user: AuthenticatedUser) {
