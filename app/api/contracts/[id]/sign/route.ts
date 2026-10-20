@@ -5,6 +5,7 @@ import { parseJson } from "@/lib/api-helpers"
 import { getCollection } from "@/lib/mongodb"
 import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { serializeContract } from "@/lib/serializers/contract"
+import { assertContractPdfInS3, contractPdfHttpError } from "@/lib/assert-contract-pdfs"
 
 type ContractDoc = {
   _id: import("mongodb").ObjectId
@@ -58,11 +59,25 @@ export const POST = withAuth(async (req: NextRequest, user, { params }: { params
     )
   }
 
+  let signedPdfUrl: string
+  try {
+    const verified = await assertContractPdfInS3(body.data.signedPdfUrl, {
+      tenantId: contract.tenantId,
+      contractId: contract._id.toString(),
+      kind: "signed",
+    })
+    signedPdfUrl = verified.objectKey
+  } catch (error) {
+    const mapped = contractPdfHttpError(error)
+    if (mapped) return NextResponse.json(mapped, { status: 400 })
+    throw error
+  }
+
   const updated = await contractsCol.findOneAndUpdate(
     { _id: idParsed.value },
     {
       $set: {
-        signedPdfUrl: body.data.signedPdfUrl,
+        signedPdfUrl,
         status: "signed",
         updatedAt: new Date(),
       },

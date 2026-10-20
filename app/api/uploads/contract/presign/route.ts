@@ -7,6 +7,12 @@ import { parseObjectIdParam } from "@/lib/mongo-helpers"
 import { getCollection } from "@/lib/mongodb"
 import { presignContractUploadSchema } from "@/lib/schemas/upload"
 import { buildContractObjectKey, getS3Bucket, getS3Client } from "@/lib/s3"
+import {
+  contractPutObjectInput,
+  isContractSizeAllowed,
+  normalizeContractContentType,
+} from "@/lib/contract-pdf-constraints"
+import { SIGNABLE_UPLOAD_HEADERS } from "@/lib/upload-object-constraints"
 
 type ContractDoc = {
   _id: import("mongodb").ObjectId
@@ -21,22 +27,17 @@ type TenantDoc = {
   email: string
 }
 
-const PDF_CONTENT_TYPE = "application/pdf"
-
-function normalizeContractContentType(contentType: string) {
-  const normalized = contentType.toLowerCase()
-  if (normalized !== PDF_CONTENT_TYPE) return ""
-  return normalized
-}
-
 export const POST = withAuth(async (req: NextRequest, user) => {
   const parsed = await parseJson(req, presignContractUploadSchema)
   if ("error" in parsed) return parsed.error
 
-  const { contractId, contentType, kind } = parsed.data
+  const { contractId, contentType, kind, size } = parsed.data
   const normalizedContentType = normalizeContractContentType(contentType)
   if (!normalizedContentType) {
     return badRequest("Only PDF files are allowed")
+  }
+  if (!isContractSizeAllowed(size)) {
+    return badRequest("File must be greater than 0 bytes and at most 20 MB")
   }
 
   const contractIdParsed = parseObjectIdParam(contractId)
@@ -74,38 +75,21 @@ export const POST = withAuth(async (req: NextRequest, user) => {
     return badRequest("Contract is not ready to be signed")
   }
 
-  const objectKey = buildContractObjectKey(contract.tenantId, contractId, kind)
+  const objectKey = buildContractObjectKey(contract.tenantId, contract._id.toString(), kind)
   const bucket = getS3Bucket()
   const client = getS3Client()
-  const command = new PutObjectCommand({
-    Bucket: bucket,
-    Key: objectKey,
-    ContentType: normalizedContentType,
+  const command = new PutObjectCommand(
+    contractPutObjectInput({
+      bucket,
+      objectKey,
+      contentType: normalizedContentType,
+      size,
+    })
+  )
+  const uploadUrl = await getSignedUrl(client, command, {
+    expiresIn: 60 * 5,
+    signableHeaders: SIGNABLE_UPLOAD_HEADERS,
   })
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 })
-
-  if (kind === "signed") {
-    await contractsCol.updateOne(
-      { _id: contractIdParsed.value },
-      {
-        $set: {
-          signedPdfUrl: objectKey,
-          status: "signed",
-          updatedAt: new Date(),
-        },
-      }
-    )
-  } else {
-    await contractsCol.updateOne(
-      { _id: contractIdParsed.value },
-      {
-        $set: {
-          pdfUrl: objectKey,
-          updatedAt: new Date(),
-        },
-      }
-    )
-  }
 
   return NextResponse.json({
     uploadUrl,

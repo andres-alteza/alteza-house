@@ -197,6 +197,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "contracts.signedUploadedSuccess": "Contrato firmado subido correctamente.",
     "contracts.createUploadPartialError":
       "El contrato se creo, pero fallo la subida del PDF. Subelo desde esta pantalla.",
+    "contracts.emptyFileError": "El archivo está vacío. Elige otro PDF e inténtalo de nuevo.",
+    "contracts.fileTooLargeError": "El archivo supera el límite de 20 MB.",
+    "contracts.unreadableFileError":
+      "No se pudo leer el archivo. Elige otro PDF e inténtalo de nuevo.",
 
     // Payments
     "payments.title": "Gestión de Pagos",
@@ -540,6 +544,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "contracts.signedUploadedSuccess": "Signed contract uploaded successfully.",
     "contracts.createUploadPartialError":
       "Contract created, but PDF upload failed. Please upload it from this screen.",
+    "contracts.emptyFileError": "This file is empty. Choose another PDF and try again.",
+    "contracts.fileTooLargeError": "This file is larger than the 20 MB limit.",
+    "contracts.unreadableFileError":
+      "This file could not be read. Choose another PDF and try again.",
 
     // Payments
     "payments.title": "Payments Management",

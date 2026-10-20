@@ -12,12 +12,70 @@ import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
 import { Save, X, Download, Upload, CheckCircle, ChevronDown, Trash2, Loader2 } from "lucide-react"
 import { toast } from "sonner"
+import {
+  CONTRACT_MAX_BYTES,
+  PDF_CONTENT_TYPE,
+  isAllowedContractContentType,
+  sniffContractMagicBytes,
+} from "@/lib/contract-pdf-constraints"
 
-const PDF_CONTENT_TYPE = "application/pdf"
 const PDF_FILE_EXTENSION = ".pdf"
 
 function isPdfFile(file: File) {
   return file.type.toLowerCase() === PDF_CONTENT_TYPE || file.name.toLowerCase().endsWith(PDF_FILE_EXTENSION)
+}
+
+function contractFileIssueMessage(code: string, t: (key: string) => string) {
+  if (code === "empty_contract") return t("contracts.emptyFileError")
+  if (code === "too_large") return t("contracts.fileTooLargeError")
+  if (code === "unreadable_contract_file") return t("contracts.unreadableFileError")
+  if (code === "invalid_contract_type") return t("contracts.invalidPdfError")
+  return t("contracts.uploadError")
+}
+
+function messageForContractFileError(error: unknown, t: (key: string) => string) {
+  const record = error as { code?: string } | null
+  if (record?.code) return contractFileIssueMessage(record.code, t)
+  return t("contracts.uploadError")
+}
+
+function throwContractFileError(code: string, message: string): never {
+  const error = new Error(message) as Error & { code: string }
+  error.code = code
+  throw error
+}
+
+async function readContractPdfForUpload(file: File) {
+  let bytes: ArrayBuffer
+  try {
+    bytes = await file.arrayBuffer()
+  } catch {
+    throwContractFileError("unreadable_contract_file", "unreadable-contract")
+  }
+
+  if (!Number.isFinite(bytes.byteLength) || bytes.byteLength <= 0) {
+    throwContractFileError("empty_contract", "empty-contract")
+  }
+  if (bytes.byteLength > CONTRACT_MAX_BYTES) {
+    throwContractFileError("too_large", "too-large-contract")
+  }
+
+  const claimedType = file.type || PDF_CONTENT_TYPE
+  if (!isAllowedContractContentType(claimedType) && !file.name.toLowerCase().endsWith(PDF_FILE_EXTENSION)) {
+    throwContractFileError("invalid_contract_type", "invalid-contract")
+  }
+
+  const magic = sniffContractMagicBytes(new Uint8Array(bytes.slice(0, 8)))
+  if (magic !== "pdf") {
+    throwContractFileError("invalid_contract_type", "invalid-contract")
+  }
+
+  return {
+    contentType: PDF_CONTENT_TYPE,
+    size: bytes.byteLength,
+    body: new Blob([bytes], { type: PDF_CONTENT_TYPE }),
+    filename: file.name,
+  }
 }
 
 function suggestContractEndDate(startDate: string) {
@@ -211,6 +269,18 @@ export function ContractsPage() {
     setSaving(true)
     setCreateError("")
     try {
+      let preparedDraft: Awaited<ReturnType<typeof readContractPdfForUpload>> | null = null
+      if (createDraftFile) {
+        try {
+          preparedDraft = await readContractPdfForUpload(createDraftFile)
+        } catch (readError) {
+          const message = messageForContractFileError(readError, t)
+          setCreateError(message)
+          toast.error(message)
+          return
+        }
+      }
+
       const tenant = tenants.find((ten) => ten.id === formData.tenantId)
       const createdContract = await api.createContract({
         tenantId: formData.tenantId,
@@ -220,22 +290,24 @@ export function ContractsPage() {
         monthlyPrice: Number(formData.monthlyPrice),
       })
 
-      if (createDraftFile) {
+      if (preparedDraft) {
         try {
           const presign = await api.presignContractUpload({
             contractId: createdContract.id,
-            filename: createDraftFile.name,
-            contentType: createDraftFile.type || PDF_CONTENT_TYPE,
+            filename: preparedDraft.filename,
+            contentType: preparedDraft.contentType,
+            size: preparedDraft.size,
             kind: "draft",
           })
           const uploadResponse = await fetch(presign.uploadUrl, {
             method: "PUT",
             headers: { "Content-Type": presign.contentType },
-            body: createDraftFile,
+            body: preparedDraft.body,
           })
           if (!uploadResponse.ok) {
             throw new Error(`Upload failed with status ${uploadResponse.status}`)
           }
+          await api.updateContract(createdContract.id, { pdfUrl: presign.objectKey })
         } catch (uploadError) {
           console.error("Create contract draft upload error:", uploadError)
           toast.error(t("contracts.createUploadPartialError"))
@@ -297,20 +369,28 @@ export function ContractsPage() {
     setDetailError("")
 
     try {
+      const prepared = await readContractPdfForUpload(file)
       const presign = await api.presignContractUpload({
         contractId: selectedContract.id,
-        filename: file.name,
-        contentType: file.type || PDF_CONTENT_TYPE,
+        filename: prepared.filename,
+        contentType: prepared.contentType,
+        size: prepared.size,
         kind,
       })
 
       const uploadResponse = await fetch(presign.uploadUrl, {
         method: "PUT",
         headers: { "Content-Type": presign.contentType },
-        body: file,
+        body: prepared.body,
       })
       if (!uploadResponse.ok) {
         throw new Error(`Upload failed with status ${uploadResponse.status}`)
+      }
+
+      if (kind === "signed") {
+        await api.signContract(selectedContract.id, { signedPdfUrl: presign.objectKey })
+      } else {
+        await api.updateContract(selectedContract.id, { pdfUrl: presign.objectKey })
       }
 
       toast.success(kind === "draft" ? t("contracts.draftUploadedSuccess") : t("contracts.signedUploadedSuccess"))
@@ -318,8 +398,9 @@ export function ContractsPage() {
       await refreshContracts(selectedContract.id)
     } catch (error) {
       console.error("Upload contract file error:", error)
-      setDetailError(t("contracts.uploadError"))
-      toast.error(t("contracts.uploadError"))
+      const message = messageForContractFileError(error, t)
+      setDetailError(message)
+      toast.error(message)
     } finally {
       if (kind === "draft") {
         setUploadingDraft(false)
