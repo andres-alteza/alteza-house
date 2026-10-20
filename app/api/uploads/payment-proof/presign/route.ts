@@ -83,7 +83,10 @@ export const POST = withAuth(async (req: NextRequest, user) => {
     })
   )
 
-  const uploadUrl = await getSignedUrl(client, command, { expiresIn: 60 * 5 })
+  const uploadUrl = await getSignedUrl(client, command, {
+    expiresIn: 60 * 5,
+    signableHeaders: new Set(["content-length", "content-type"]),
+  })
 
   return NextResponse.json({
     uploadUrl,
