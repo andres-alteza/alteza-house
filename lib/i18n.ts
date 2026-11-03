@@ -266,7 +266,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.allYears": "Todos los años",
     "payments.allStates": "Todos los estados",
     "reports.paymentsTitle": "Reporte de Pagos",
-    "reports.paidTitle": "Inquilinos al día este mes",
+    "reports.paidTitle": "Inquilinos al día",
     "reports.unpaidTitle": "Inquilinos con deudas",
     "reports.paidDescription":
       "Lista los inquilinos con pago aprobado en el periodo seleccionado (Desde y Hasta), agrupados por casa como en Pagos.",
@@ -616,7 +616,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "payments.allYears": "All years",
     "payments.allStates": "All statuses",
     "reports.paymentsTitle": "Payments Report",
-    "reports.paidTitle": "Tenants paid this month",
+    "reports.paidTitle": "Tenants paid",
     "reports.unpaidTitle": "Tenants with debts",
     "reports.paidDescription":
       "Lists tenants with an approved payment for the selected period (From and To), grouped by house like Payments.",
