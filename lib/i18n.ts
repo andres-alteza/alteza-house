@@ -269,7 +269,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "reports.paidTitle": "Inquilinos al día este mes",
     "reports.unpaidTitle": "Inquilinos con deudas",
     "reports.paidDescription":
-      "Lista los inquilinos con pago aprobado en el mes seleccionado, agrupados por casa como en Pagos.",
+      "Lista los inquilinos con pago aprobado en el periodo seleccionado (Desde y Hasta), agrupados por casa como en Pagos.",
     "reports.unpaidDescription":
       "Lista los inquilinos con meses sin pago aprobado, agrupados por mes y casa como en Pagos.",
     "reports.generatePdf": "Generar PDF",
@@ -277,6 +277,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "reports.tenant": "Inquilino",
     "reports.allHouses": "Todas las casas",
     "reports.allTenants": "Todos los inquilinos",
+    "reports.from": "Desde",
+    "reports.to": "Hasta",
+    "reports.noLimit": "Sin límite",
+    "reports.rangeInvalid": "El mes \"Desde\" no puede ser posterior a \"Hasta\"",
     "reports.year": "Año",
     "reports.month": "Mes",
     "reports.status": "Estado",
@@ -615,7 +619,7 @@ const translations: Record<Locale, Record<string, string>> = {
     "reports.paidTitle": "Tenants paid this month",
     "reports.unpaidTitle": "Tenants with debts",
     "reports.paidDescription":
-      "Lists tenants with an approved payment for the selected month, grouped by house like Payments.",
+      "Lists tenants with an approved payment for the selected period (From and To), grouped by house like Payments.",
     "reports.unpaidDescription":
       "Lists tenants with contract months that still have no approved payment, grouped by month and house like Payments.",
     "reports.generatePdf": "Generate PDF",
@@ -623,6 +627,10 @@ const translations: Record<Locale, Record<string, string>> = {
     "reports.tenant": "Tenant",
     "reports.allHouses": "All houses",
     "reports.allTenants": "All tenants",
+    "reports.from": "From",
+    "reports.to": "To",
+    "reports.noLimit": "No limit",
+    "reports.rangeInvalid": "\"From\" cannot be later than \"To\"",
     "reports.year": "Year",
     "reports.month": "Month",
     "reports.status": "Status",

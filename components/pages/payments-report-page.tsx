@@ -10,19 +10,24 @@ import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
 import type { House, Tenant } from "@/lib/types"
+import { getBogotaDateParts, monthIndex, parseStrictYearMonth, toMonthKey } from "@/lib/payment-periods"
+import { periodFilenameChunk } from "@/lib/report-format"
 
 function buildReportFilename(filters: {
   houseLabel?: string
   tenantLabel?: string
-  year?: string
-  month?: string
+  from?: string
+  to?: string
   state?: string
 }) {
   const chunks = ["payments-report"]
   if (filters.houseLabel) chunks.push(filters.houseLabel.replace(/\s+/g, "-").toLowerCase())
   if (filters.tenantLabel) chunks.push(filters.tenantLabel.replace(/\s+/g, "-").toLowerCase())
-  if (filters.year) chunks.push(filters.year)
-  if (filters.month) chunks.push(`m${filters.month}`)
+  const period = periodFilenameChunk({
+    from: parseStrictYearMonth(filters.from) ?? undefined,
+    to: parseStrictYearMonth(filters.to) ?? undefined,
+  })
+  if (period) chunks.push(period)
   if (filters.state && filters.state !== "all") chunks.push(filters.state)
   return `${chunks.join("-")}.pdf`
 }
@@ -35,23 +40,29 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
 
   const [selectedHouseId, setSelectedHouseId] = useState("")
   const [selectedTenantId, setSelectedTenantId] = useState("")
-  const [selectedYear, setSelectedYear] = useState(() =>
-    reportState === "approved" ? String(new Date().getFullYear()) : ""
-  )
-  const [selectedMonth, setSelectedMonth] = useState(() =>
-    reportState === "approved" ? String(new Date().getMonth() + 1) : ""
-  )
+  const currentMonthKey = useMemo(() => {
+    const { year, month } = getBogotaDateParts()
+    return toMonthKey(year, month)
+  }, [])
+  // Paid report starts on the current month. Unpaid starts with no limit.
+  const [selectedFrom, setSelectedFrom] = useState(() => (reportState === "approved" ? currentMonthKey : ""))
+  const [selectedTo, setSelectedTo] = useState(() => (reportState === "approved" ? currentMonthKey : ""))
   const [downloading, setDownloading] = useState(false)
   const [isEmailModalOpen, setIsEmailModalOpen] = useState(false)
   const [newEmail, setNewEmail] = useState("")
   const [emails, setEmails] = useState<string[]>([])
   const [sendingEmail, setSendingEmail] = useState(false)
 
-  const currentYear = new Date().getFullYear()
-  const yearOptions = useMemo(
-    () => [currentYear - 2, currentYear - 1, currentYear, currentYear + 1].map(String),
-    [currentYear]
-  )
+  const monthOptions = useMemo(() => {
+    const currentYear = getBogotaDateParts().year
+    const options: { value: string; year: number; month: number }[] = []
+    for (let year = currentYear - 2; year <= currentYear + 1; year += 1) {
+      for (let month = 1; month <= 12; month += 1) {
+        options.push({ value: toMonthKey(year, month), year, month })
+      }
+    }
+    return options
+  }, [])
 
   const houseTenants = useMemo(() => {
     if (!selectedHouseId) return tenants
@@ -73,15 +84,25 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
     }
   }
 
+  const rangeIsInvalid = () => {
+    const from = parseStrictYearMonth(selectedFrom)
+    const to = parseStrictYearMonth(selectedTo)
+    if (from && to && monthIndex(from) > monthIndex(to)) {
+      toast.error(t("reports.rangeInvalid"))
+      return true
+    }
+    return false
+  }
+
   const generateReport = async () => {
-    if (!isAdmin || downloading) return
+    if (!isAdmin || downloading || rangeIsInvalid()) return
     setDownloading(true)
     try {
       const blob = await api.getPaymentsReportPdf({
         houseId: selectedHouseId || undefined,
         tenantId: selectedTenantId || undefined,
-        year: selectedYear || undefined,
-        month: selectedMonth || undefined,
+        from: selectedFrom || undefined,
+        to: selectedTo || undefined,
         state: reportState,
       })
 
@@ -91,8 +112,8 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
       anchor.download = buildReportFilename({
         houseLabel: selectedHouse?.name,
         tenantLabel: selectedTenant?.name,
-        year: selectedYear,
-        month: selectedMonth,
+        from: selectedFrom,
+        to: selectedTo,
         state: reportState,
       })
       document.body.appendChild(anchor)
@@ -131,7 +152,7 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
   }
 
   const sendReportByEmail = async () => {
-    if (!isAdmin || sendingEmail) return
+    if (!isAdmin || sendingEmail || rangeIsInvalid()) return
 
     let nextEmails = emails
     const pendingEmail = newEmail.trim().toLowerCase()
@@ -157,8 +178,8 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
       await api.sendPaymentsReportEmail({
         houseId: selectedHouseId || undefined,
         tenantId: selectedTenantId || undefined,
-        year: selectedYear || undefined,
-        month: selectedMonth || undefined,
+        from: selectedFrom || undefined,
+        to: selectedTo || undefined,
         state: reportState,
         emails: nextEmails,
       })
@@ -234,17 +255,17 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">{t("reports.year")}</label>
+            <label className="text-xs font-medium text-muted-foreground">{t("reports.from")}</label>
             <div className="relative">
               <select
-                value={selectedYear}
-                onChange={(e) => setSelectedYear(e.target.value)}
+                value={selectedFrom}
+                onChange={(e) => setSelectedFrom(e.target.value)}
                 className={selectClass}
               >
-                <option value="">{t("reports.allYears")}</option>
-                {yearOptions.map((year) => (
-                  <option key={year} value={year}>
-                    {year}
+                <option value="">{t("reports.noLimit")}</option>
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(`month.${option.month}`)} {option.year}
                   </option>
                 ))}
               </select>
@@ -253,17 +274,17 @@ export function PaymentsReportPage({ reportState }: { reportState: "approved" | 
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <label className="text-xs font-medium text-muted-foreground">{t("reports.month")}</label>
+            <label className="text-xs font-medium text-muted-foreground">{t("reports.to")}</label>
             <div className="relative">
               <select
-                value={selectedMonth}
-                onChange={(e) => setSelectedMonth(e.target.value)}
+                value={selectedTo}
+                onChange={(e) => setSelectedTo(e.target.value)}
                 className={selectClass}
               >
-                <option value="">{t("reports.allMonths")}</option>
-                {Array.from({ length: 12 }, (_, i) => (
-                  <option key={i + 1} value={String(i + 1)}>
-                    {t(`month.${i + 1}`)}
+                <option value="">{t("reports.noLimit")}</option>
+                {monthOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {t(`month.${option.month}`)} {option.year}
                   </option>
                 ))}
               </select>

@@ -1,18 +1,22 @@
+import { formatIdDocument } from "./id-types"
 import {
   coerceYearMonthNumber,
+  isInMonthRange,
   iterateContractMonths,
   toMonthKey,
   unpaidBalance,
+  type MonthRange,
   type YearMonth,
 } from "./payment-periods"
 
-export type ReportFilters = {
+export type ReportFilters = MonthRange & {
   houseId?: string
   tenantId?: string
-  year?: number
-  month?: number
   state?: "pending" | "approved" | "all"
 }
+
+/** "full" shows payer name, document and tenant email. "summary" leaves them out (used for the cron email). */
+export type ReportDetail = "full" | "summary"
 
 export type PaymentReportState = "approved" | "pending" | "unpaid"
 
@@ -25,6 +29,14 @@ export type PaymentReportRow = {
   month: number
   amount: number
   state: PaymentReportState
+  /** Payment createdAt (ISO). Empty for unpaid months. */
+  createdAt?: string
+  /** Tenant email. Only in "full" detail. */
+  tenantEmail?: string
+  /** Acudiente (guardian) name. Only in "full" detail. */
+  payerName?: string
+  /** Acudiente document, e.g. "CC 123" or "sin documento". Only in "full" detail. */
+  payerDocument?: string
 }
 
 export type ReportHouse = {
@@ -38,6 +50,10 @@ export type ReportTenant = {
   houseId: string
   houseName: string
   isDeleted?: boolean
+  email?: string
+  parentName?: string
+  guardianTypeId?: string
+  guardianIdNumber?: string
 }
 
 export type ReportContract = {
@@ -60,6 +76,7 @@ export type ReportPayment = {
   month: number
   amount: number
   state: "pending" | "approved"
+  createdAt?: string
 }
 
 export type ReportRowSources = {
@@ -99,10 +116,26 @@ function matchesTenantFilter(tenantId: string, filterTenantId?: string) {
   return tenantId === filterTenantId
 }
 
-function matchesPeriod(row: YearMonth, year?: number, month?: number) {
-  if (year !== undefined && row.year !== year) return false
-  if (month !== undefined && row.month !== month) return false
-  return true
+function payerFields(tenant: ReportTenant | undefined) {
+  return {
+    tenantEmail: (tenant?.email ?? "").trim(),
+    payerName: (tenant?.parentName ?? "").trim(),
+    payerDocument: formatIdDocument(tenant?.guardianTypeId, tenant?.guardianIdNumber),
+  }
+}
+
+export function toSummaryRow(row: PaymentReportRow): PaymentReportRow {
+  const { tenantEmail: _email, payerName: _name, payerDocument: _document, ...rest } = row
+  return rest
+}
+
+function toIsoString(value: unknown) {
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? undefined : value.toISOString()
+  if (typeof value === "string" && value.trim()) {
+    const parsed = new Date(value)
+    return Number.isNaN(parsed.getTime()) ? undefined : parsed.toISOString()
+  }
+  return undefined
 }
 
 export function normalizeReportPayment(payment: {
@@ -115,6 +148,7 @@ export function normalizeReportPayment(payment: {
   month: unknown
   amount: unknown
   state?: string
+  createdAt?: unknown
 }): ReportPayment | null {
   const year = coerceYearMonthNumber(payment.year)
   const month = coerceYearMonthNumber(payment.month)
@@ -133,12 +167,13 @@ export function normalizeReportPayment(payment: {
     month,
     amount: Number(payment.amount || 0),
     state,
+    createdAt: toIsoString(payment.createdAt),
   }
 }
 
 export function buildPaidReportRows(
   sources: ReportRowSources,
-  filters: Pick<ReportFilters, "houseId" | "tenantId" | "year" | "month">
+  filters: Pick<ReportFilters, "houseId" | "tenantId" | "from" | "to">
 ): PaymentReportRow[] {
   const housesById = new Map(sources.houses.map((house) => [house.id, house]))
   const tenantsById = new Map(sources.tenants.map((tenant) => [tenant.id, tenant]))
@@ -146,7 +181,7 @@ export function buildPaidReportRows(
 
   return sources.payments
     .filter((payment) => payment.state === "approved")
-    .filter((payment) => matchesPeriod(payment, filters.year, filters.month))
+    .filter((payment) => isInMonthRange(payment, filters))
     .filter((payment) => matchesTenantFilter(payment.tenantId, filters.tenantId))
     .map((payment) => {
       const tenant = tenantsById.get(payment.tenantId)
@@ -160,6 +195,8 @@ export function buildPaidReportRows(
         month: payment.month,
         amount: payment.amount,
         state: "approved" as const,
+        createdAt: payment.createdAt,
+        ...payerFields(tenant),
       }
     })
     .filter((row) =>
@@ -169,7 +206,7 @@ export function buildPaidReportRows(
 
 export function buildUnpaidReportRows(
   sources: ReportRowSources,
-  filters: Pick<ReportFilters, "houseId" | "tenantId" | "year" | "month">,
+  filters: Pick<ReportFilters, "houseId" | "tenantId" | "from" | "to">,
   cutoff: YearMonth
 ): PaymentReportRow[] {
   const housesById = new Map(sources.houses.map((house) => [house.id, house]))
@@ -201,7 +238,7 @@ export function buildUnpaidReportRows(
     if (!matchesHouseFilter(tenant, houseName, filters.houseId, selectedHouse)) continue
 
     for (const period of iterateContractMonths(contract.startDate, contract.endDate, cutoff)) {
-      if (!matchesPeriod(period, filters.year, filters.month)) continue
+      if (!isInMonthRange(period, filters)) continue
 
       const monthKey = `${contract.id}|${toMonthKey(period.year, period.month)}`
       const approvedAmount = approvedByContractMonth.get(monthKey) ?? 0
@@ -217,6 +254,7 @@ export function buildUnpaidReportRows(
         month: period.month,
         amount: balance,
         state: pendingByContractMonth.has(monthKey) ? "pending" : "unpaid",
+        ...payerFields(tenant),
       })
     }
   }
@@ -227,9 +265,11 @@ export function buildUnpaidReportRows(
 export function buildPaymentReportRows(
   sources: ReportRowSources,
   filters: ReportFilters,
-  cutoff: YearMonth
+  cutoff: YearMonth,
+  detail: ReportDetail = "summary"
 ): PaymentReportRow[] {
   const paid = filters.state === "pending" ? [] : buildPaidReportRows(sources, filters)
   const unpaid = filters.state === "approved" ? [] : buildUnpaidReportRows(sources, filters, cutoff)
-  return [...paid, ...unpaid]
+  const rows = [...paid, ...unpaid]
+  return detail === "full" ? rows : rows.map(toSummaryRow)
 }

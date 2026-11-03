@@ -118,8 +118,9 @@ type PresignContractUploadResponse = {
 type PaymentsReportFilters = {
   houseId?: string
   tenantId?: string
-  year?: string
-  month?: string
+  /** "YYYY-MM", inclusive. Leave empty for no limit. */
+  from?: string
+  to?: string
   state?: "pending" | "approved" | "all"
 }
 
