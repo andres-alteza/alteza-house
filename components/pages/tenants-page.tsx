@@ -5,42 +5,12 @@ import useSWR from "swr"
 import { useI18n } from "@/lib/i18n-context"
 import { api } from "@/lib/api-client"
 import type { Tenant, House } from "@/lib/types"
+import { ID_TYPE_OPTIONS } from "@/lib/id-types"
 import { DataTable } from "@/components/data-table"
 import { PageHeader } from "@/components/page-header"
 import { Modal } from "@/components/modal"
 import { Pencil, Save, X } from "lucide-react"
 import { toast } from "sonner"
-
-const ID_TYPE_OPTIONS = [
-  {
-    value: "CC",
-    label: "Cédula de Ciudadanía (CC)",
-  },
-  {
-    value: "TI",
-    label: "Tarjeta de Identidad (TI)",
-  },
-  {
-    value: "RC",
-    label: "Registro Civil de Nacimiento (RC)",
-  },
-  {
-    value: "CE",
-    label: "Cédula de Extranjería (CE)",
-  },
-  {
-    value: "PP",
-    label: "Pasaporte (PP)",
-  },
-  {
-    value: "PEP",
-    label: "Permiso Especial de Permanencia (PEP)",
-  },
-  {
-    value: "NIT",
-    label: "NIT",
-  },
-]
 
 export function TenantsPage() {
   const { t } = useI18n()

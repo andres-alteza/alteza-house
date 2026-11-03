@@ -16,9 +16,19 @@ const parseOptionalInt = (label: string, min: number, max: number) =>
     z.number().int(`Invalid ${label}`).min(min, `Invalid ${label}`).max(max, `Invalid ${label}`).optional()
   )
 
+const yearMonthSchema = z
+  .string()
+  .trim()
+  .regex(/^\d{4}-(0[1-9]|1[0-2])$/, "Invalid period, use YYYY-MM")
+  .optional()
+  .or(z.literal("").transform(() => undefined))
+
 const reportFiltersSchema = z.object({
   houseId: z.string().trim().optional(),
   tenantId: z.string().trim().optional(),
+  from: yearMonthSchema,
+  to: yearMonthSchema,
+  // Older aliases: still accepted so a stale browser tab does not get every month back.
   year: parseOptionalInt("year", 2000, 3000),
   month: parseOptionalInt("month", 1, 12),
   state: z.enum(["pending", "approved", "all"]).optional(),
@@ -43,7 +53,7 @@ export const GET = withAuth(
 
     let report
     try {
-      report = await buildPaymentsReport(parsedQuery.data)
+      report = await buildPaymentsReport(parsedQuery.data, { detail: "full" })
     } catch (error) {
       return toErrorResponse(error)
     }
@@ -66,7 +76,8 @@ export const POST = withAuth(
 
     let report
     try {
-      report = await buildPaymentsReport(parsedBody.data)
+      const { emails: _emails, ...filters } = parsedBody.data
+      report = await buildPaymentsReport(filters, { detail: "full" })
     } catch (error) {
       return toErrorResponse(error)
     }

@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getAppSettings } from "@/lib/app-settings"
 import { getCollection } from "@/lib/mongodb"
 import { buildOverduePaymentReminders, type OverduePaymentReminder } from "@/lib/payment-reminders"
-import { getBogotaDateParts } from "@/lib/payment-periods"
+import { getBogotaDateParts, toMonthKey } from "@/lib/payment-periods"
 import { buildPaymentsReport } from "@/lib/payments-report"
 import { sendPaymentsReportEmail } from "@/lib/resend"
 import {
@@ -224,8 +224,14 @@ export async function GET(req: NextRequest) {
 
   try {
     if (shouldSendReports && emailRecipients.length) {
-      const paidReport = await buildPaymentsReport({ state: "approved", year, month })
-      const unpaidReport = await buildPaymentsReport({ state: "pending" })
+      // The cron emails settings.notificationEmails (any address), so it always uses the
+      // summary version: no acudiente name, document or tenant email.
+      const currentMonth = toMonthKey(year, month)
+      const paidReport = await buildPaymentsReport(
+        { state: "approved", from: currentMonth, to: currentMonth },
+        { detail: "summary" }
+      )
+      const unpaidReport = await buildPaymentsReport({ state: "pending" }, { detail: "summary" })
       const from = process.env.RESEND_FROM_EMAIL?.trim() || "onboarding@resend.dev"
 
       await Promise.all([

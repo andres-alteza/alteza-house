@@ -282,7 +282,7 @@ export async function sendPaymentsReportEmail({
       <div style="font-family: Arial, sans-serif; color: #111827; line-height: 1.5;">
         <h2 style="margin-bottom: 8px;">Reporte de pagos</h2>
         <p style="margin-top: 0;">Adjuntamos el reporte de pagos solicitado.</p>
-        <p><strong>Filtros:</strong> ${filtersLabel}</p>
+        <p><strong>Filtros:</strong> ${escapeHtml(filtersLabel)}</p>
       </div>
     `,
     text,

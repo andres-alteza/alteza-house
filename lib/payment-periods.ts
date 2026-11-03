@@ -75,3 +75,48 @@ export function* iterateContractMonths(
 export function unpaidBalance(monthlyPrice: number, approvedAmount: number) {
   return Math.max(Number(monthlyPrice || 0) - Number(approvedAmount || 0), 0)
 }
+
+export function monthIndex(value: YearMonth) {
+  return value.year * 12 + value.month
+}
+
+export type MonthRange = {
+  from?: YearMonth
+  to?: YearMonth
+}
+
+/** Inclusive range check; a missing bound is open-ended. */
+export function isInMonthRange(value: YearMonth, range: MonthRange) {
+  const index = monthIndex(value)
+  if (range.from && index < monthIndex(range.from)) return false
+  if (range.to && index > monthIndex(range.to)) return false
+  return true
+}
+
+const YEAR_MONTH_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/
+
+export function parseStrictYearMonth(value: string | undefined | null): YearMonth | null {
+  const text = (value ?? "").trim()
+  if (!YEAR_MONTH_PATTERN.test(text)) return null
+  return parseYearMonth(text)
+}
+
+/**
+ * Turns the request period into a month range. `from`/`to` win. The older `year`/`month`
+ * filters stay as aliases so a stale browser tab does not get every month back:
+ * year+month = that month, year only = January to December, month only = that month of the current year.
+ */
+export function resolveReportPeriod(
+  input: { from?: YearMonth; to?: YearMonth; year?: number; month?: number },
+  now: YearMonth = getBogotaDateParts()
+): MonthRange {
+  if (input.from || input.to) return { from: input.from, to: input.to }
+  const { year, month } = input
+  if (year === undefined && month === undefined) return {}
+  const resolvedYear = year ?? now.year
+  if (month !== undefined) {
+    const value = { year: resolvedYear, month }
+    return { from: value, to: value }
+  }
+  return { from: { year: resolvedYear, month: 1 }, to: { year: resolvedYear, month: 12 } }
+}

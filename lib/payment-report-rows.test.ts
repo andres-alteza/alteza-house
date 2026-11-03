@@ -88,7 +88,7 @@ function sources(overrides: Partial<ReportRowSources> = {}): ReportRowSources {
 }
 
 test("paid report includes only approved payments for the selected month", () => {
-  const rows = buildPaidReportRows(sources(), { year: 2026, month: 8 })
+  const rows = buildPaidReportRows(sources(), { from: { year: 2026, month: 8 }, to: { year: 2026, month: 8 } })
   assert.deepEqual(
     rows.map((row) => row.tenantName).sort(),
     ["Ana", "Mara"]
@@ -98,7 +98,7 @@ test("paid report includes only approved payments for the selected month", () =>
 })
 
 test("paid report groups by house like the payments page", () => {
-  const grouped = groupPaymentsByMonthAndHouse(buildPaidReportRows(sources(), { year: 2026, month: 8 }))
+  const grouped = groupPaymentsByMonthAndHouse(buildPaidReportRows(sources(), { from: { year: 2026, month: 8 }, to: { year: 2026, month: 8 } }))
   assert.equal(grouped.length, 1)
   assert.deepEqual(
     grouped[0].houses.map((house) => house.houseName),
@@ -192,7 +192,7 @@ test("partial approved payments leave the remaining balance as unpaid", () => {
     ],
   })
 
-  const rows = buildUnpaidReportRows(data, { tenantId: "tenant-luis", year: 2026, month: 8 }, {
+  const rows = buildUnpaidReportRows(data, { tenantId: "tenant-luis", from: { year: 2026, month: 8 }, to: { year: 2026, month: 8 } }, {
     year: 2026,
     month: 8,
   })

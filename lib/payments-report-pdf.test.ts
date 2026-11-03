@@ -56,17 +56,16 @@ function sources(): ReportRowSources {
 
 test("renders a paid PDF grouped by the selected month and house", async () => {
   const report = await renderPaymentsReportPdf({
-    rows: buildPaidReportRows(sources(), { year: 2026, month: 8 }),
+    rows: buildPaidReportRows(sources(), { from: { year: 2026, month: 8 }, to: { year: 2026, month: 8 } }),
     state: "approved",
     houseLabel: "Todas",
     tenantLabel: "Todos",
-    year: 2026,
-    month: 8,
+    period: { from: { year: 2026, month: 8 }, to: { year: 2026, month: 8 } },
     cutoff: { year: 2026, month: 8 },
   })
 
-  assert.equal(report.filename, "payments-report-paid-2026-m8.pdf")
-  assert.match(report.subject, /Inquilinos al dia/)
+  assert.equal(report.filename, "payments-report-paid-2026-08.pdf")
+  assert.match(report.subject, /Inquilinos al día/)
   assert.equal(Buffer.from(report.bytes).subarray(0, 5).toString(), "%PDF-")
 
   const pdf = await PDFDocument.load(report.bytes)
