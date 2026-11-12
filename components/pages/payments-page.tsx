@@ -6,6 +6,7 @@ import { useRouter, useSearchParams } from "next/navigation"
 import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
+import { firstOwedMonth } from "@/lib/payment-periods"
 import type { Contract, House, Payment, PaymentProofAttachment, Tenant } from "@/lib/types"
 import { PaymentsGroupedTable } from "@/components/payments-grouped-table"
 import { PageHeader } from "@/components/page-header"
@@ -55,7 +56,7 @@ function parseContractDate(value: string) {
 }
 
 function buildContractWindow(contract: Contract, now: Date): ContractWindow | null {
-  const startDate = parseContractDate(contract.startDate)
+  const startDate = firstOwedMonth(contract.startDate)
   const endDate = parseContractDate(contract.endDate)
   if (!startDate || !endDate) {
     return null

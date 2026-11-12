@@ -4,6 +4,7 @@ import useSWR from "swr"
 import { useI18n } from "@/lib/i18n-context"
 import { useAuth } from "@/lib/auth-context"
 import { api } from "@/lib/api-client"
+import { isMonthOwed } from "@/lib/payment-periods"
 import type { Contract, House, Payment, Tenant } from "@/lib/types"
 import {
   AlertTriangle,
@@ -295,7 +296,11 @@ function TenantDashboard({
 
   const today = now.getDate()
   const isOverdue = today > paymentDueDay
-  const showReminder = !!activeContract && !isCurrentMonthApproved && isOverdue
+  const showReminder =
+    !!activeContract &&
+    isMonthOwed(activeContract.startDate, currentYear, currentMonth) &&
+    !isCurrentMonthApproved &&
+    isOverdue
 
   const upcomingReference = showReminder
     ? new Date(now.getFullYear(), now.getMonth() + 1, 1)

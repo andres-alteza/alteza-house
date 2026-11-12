@@ -201,3 +201,39 @@ test("partial approved payments leave the remaining balance as unpaid", () => {
   assert.equal(rows[0].amount, 200)
   assert.equal(rows[0].state, "unpaid")
 })
+
+test("unpaid report: a contract starting on day 16 or later has no row for its start month", () => {
+  const data = sources({
+    contracts: [
+      {
+        id: "contract-danna",
+        tenantId: "tenant-mara",
+        tenantName: "Mara",
+        startDate: "2026-07-31",
+        endDate: "2027-02-28",
+        monthlyPrice: 430,
+        status: "approved",
+      },
+      {
+        id: "contract-day15",
+        tenantId: "tenant-ana",
+        tenantName: "Ana",
+        startDate: "2026-07-15",
+        endDate: "2027-02-28",
+        monthlyPrice: 200,
+        status: "approved",
+      },
+    ],
+    payments: [],
+  })
+
+  const rows = buildUnpaidReportRows(data, {}, { year: 2026, month: 9 })
+  const keys = rows.map((row) => `${row.tenantName}:${row.year}-${row.month}:${row.amount}`).sort()
+  assert.deepEqual(keys, [
+    "Ana:2026-7:200",
+    "Ana:2026-8:200",
+    "Ana:2026-9:200",
+    "Mara:2026-8:430",
+    "Mara:2026-9:430",
+  ])
+})

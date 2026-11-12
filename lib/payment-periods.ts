@@ -48,12 +48,34 @@ export function coerceYearMonthNumber(value: unknown) {
   return Number.NaN
 }
 
+/** A contract starting on day 16 or later owes rent from the next month; days 1-15 owe the start month. */
+export const FIRST_OWED_MONTH_LATE_START_DAY = 16
+
+/**
+ * First month a contract owes rent. `startDate` is "YYYY-MM-DD" (a "YYYY-MM" value with no day
+ * stays the start month). Start day 16 or later rolls to the next month (December to January).
+ */
+export function firstOwedMonth(startDate: string): YearMonth | null {
+  const start = parseYearMonth(startDate)
+  if (!start) return null
+  const day = Number.parseInt(startDate.split("-")[2] ?? "", 10)
+  if (!Number.isInteger(day) || day < FIRST_OWED_MONTH_LATE_START_DAY) return start
+  return start.month === 12 ? { year: start.year + 1, month: 1 } : { year: start.year, month: start.month + 1 }
+}
+
+/** True when the month is on or after the contract's first owed month (an unreadable start date stays owed). */
+export function isMonthOwed(startDate: string, year: number, month: number) {
+  const first = firstOwedMonth(startDate)
+  if (!first) return true
+  return compareYearMonth({ year, month }, first) >= 0
+}
+
 export function* iterateContractMonths(
   startDate: string,
   endDate: string,
   target: YearMonth
 ): Generator<YearMonth> {
-  const start = parseYearMonth(startDate)
+  const start = firstOwedMonth(startDate)
   const end = parseYearMonth(endDate)
   if (!start || !end) return
 
