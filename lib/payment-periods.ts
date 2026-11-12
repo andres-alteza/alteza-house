@@ -63,6 +63,13 @@ export function firstOwedMonth(startDate: string): YearMonth | null {
   return start.month === 12 ? { year: start.year + 1, month: 1 } : { year: start.year, month: start.month + 1 }
 }
 
+/** True when the month is on or after the contract's first owed month (an unreadable start date stays owed). */
+export function isMonthOwed(startDate: string, year: number, month: number) {
+  const first = firstOwedMonth(startDate)
+  if (!first) return true
+  return compareYearMonth({ year, month }, first) >= 0
+}
+
 export function* iterateContractMonths(
   startDate: string,
   endDate: string,

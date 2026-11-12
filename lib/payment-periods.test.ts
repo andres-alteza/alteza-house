@@ -3,6 +3,7 @@ import { test } from "node:test"
 import {
   compareYearMonth,
   firstOwedMonth,
+  isMonthOwed,
   getBogotaDateParts,
   iterateContractMonths,
   unpaidBalance,
@@ -92,4 +93,27 @@ test("iterateContractMonths rolls a December day-16+ start into January", () => 
     { year: 2027, month: 1 },
     { year: 2027, month: 2 },
   ])
+})
+
+test("isMonthOwed: a start on day 16 or later owes nothing in its start month and owes the next month", () => {
+  assert.equal(isMonthOwed("2026-07-20", 2026, 7), false)
+  assert.equal(isMonthOwed("2026-07-16", 2026, 7), false)
+  assert.equal(isMonthOwed("2026-07-31", 2026, 7), false)
+  assert.equal(isMonthOwed("2026-07-20", 2026, 8), true)
+  assert.equal(isMonthOwed("2026-07-20", 2027, 1), true)
+  assert.equal(isMonthOwed("2026-07-20", 2026, 6), false, "months before the start are not owed")
+})
+
+test("isMonthOwed: a start on days 1 to 15 owes the start month as before", () => {
+  assert.equal(isMonthOwed("2026-07-01", 2026, 7), true)
+  assert.equal(isMonthOwed("2026-07-15", 2026, 7), true)
+  assert.equal(isMonthOwed("2026-07-15", 2026, 8), true)
+  assert.equal(isMonthOwed("2026-07-15", 2026, 6), false)
+})
+
+test("isMonthOwed: December day-16+ start rolls to January, and an unreadable start stays owed", () => {
+  assert.equal(isMonthOwed("2026-12-20", 2026, 12), false)
+  assert.equal(isMonthOwed("2026-12-20", 2027, 1), true)
+  assert.equal(isMonthOwed("2026-07", 2026, 7), true)
+  assert.equal(isMonthOwed("", 2026, 7), true)
 })
