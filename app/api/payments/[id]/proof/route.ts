@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { GetObjectCommand, HeadObjectCommand } from "@aws-sdk/client-s3"
 import { withAuth } from "@/lib/api-auth"
 import { PROOF_ROUTE_MAX_BYTES, resolvePaymentProof } from "@/lib/payment-proof-access"
+import { isS3NotFound } from "@/lib/assert-payment-proofs"
 import { getS3Bucket, getS3Client } from "@/lib/s3"
 import {
   EmptyOrMissingProofError,
@@ -19,12 +20,6 @@ const BASE_HEADERS = {
   "Cache-Control": "private, no-store",
   "Accept-Ranges": "bytes",
   "X-Content-Type-Options": "nosniff",
-}
-
-function isMissingObject(error: unknown) {
-  const record = (error ?? {}) as { name?: string; Code?: string; $metadata?: { httpStatusCode?: number } }
-  const name = record.name || record.Code || ""
-  return name === "NoSuchKey" || name === "NotFound" || record.$metadata?.httpStatusCode === 404
 }
 
 function isInvalidRange(error: unknown) {
@@ -73,10 +68,10 @@ export const GET = withAuth(
         new GetObjectCommand({ Bucket: getS3Bucket(), Key: objectKey, ...(range.value ? { Range: range.value } : {}) })
       )
     } catch (error) {
-      if (isMissingObject(error)) return emptyProofResponse(attachment.filename, objectKey)
       if (isInvalidRange(error)) {
         return NextResponse.json({ error: "Range not satisfiable", code: "invalid_range" }, { status: 416, headers: BASE_HEADERS })
       }
+      if (isS3NotFound(error)) return emptyProofResponse(attachment.filename, objectKey)
       throw error
     }
 
@@ -122,7 +117,7 @@ export const HEAD = withAuth(
     try {
       head = await getS3Client().send(new HeadObjectCommand({ Bucket: getS3Bucket(), Key: objectKey }))
     } catch (error) {
-      if (isMissingObject(error)) return emptyProofResponse(attachment.filename, objectKey, "missing_proof")
+      if (isS3NotFound(error)) return emptyProofResponse(attachment.filename, objectKey, "missing_proof")
       throw error
     }
 

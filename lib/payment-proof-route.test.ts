@@ -8,7 +8,7 @@ import { setAuthenticateRequestForTests } from "./api-auth"
 import { setCollectionGetterForTests } from "./mongodb"
 import { jpegBytes, pdfBytes, startMockS3 } from "./mock-s3-server"
 import { PROOF_ROUTE_MAX_BYTES } from "./payment-proof-access"
-import { resetS3Client } from "./s3"
+import { getS3Client, resetS3Client } from "./s3"
 import { GET as proofGet, HEAD as proofHead } from "../app/api/payments/[id]/proof/route"
 import { GET as proofUrlGet } from "../app/api/payments/[id]/proof-url/route"
 
@@ -233,6 +233,23 @@ test("proof route: a missing or empty S3 object is 400 empty_proof (HEAD names t
     assert.equal(head.status, 400)
     assert.equal(head.headers.get("x-proof-error"), reason)
   }
+})
+
+test("proof route: an S3 403 AccessDenied is treated as missing, like proof-url", async (t) => {
+  const { addPayment } = await setup(t)
+  const { id } = await addPayment({ body: jpegBytes(), contentType: "image/jpeg" })
+  const denied = Object.assign(new Error("Access Denied"), { name: "AccessDenied", $metadata: { httpStatusCode: 403 } })
+  getS3Client().send = (async () => {
+    throw denied
+  }) as never
+
+  const res = await proofGet(req(`/api/payments/${id}/proof`), ctx(id))
+  assert.equal(res.status, 400)
+  assert.equal(((await res.json()) as { code: string }).code, "empty_proof")
+
+  const head = await proofHead(req(`/api/payments/${id}/proof`, "HEAD"), ctx(id))
+  assert.equal(head.status, 400)
+  assert.equal(head.headers.get("x-proof-error"), "missing_proof")
 })
 
 test("proof-url keeps allowing the owner and refusing another tenant, with the same response shape", async (t) => {
